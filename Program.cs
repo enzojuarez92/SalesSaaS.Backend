@@ -1,4 +1,4 @@
-using FluentValidation; // 👈 Indispensable para los validadores
+using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Behaviors;
@@ -15,8 +15,6 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddMediatR(cfg =>
 {
     cfg.RegisterServicesFromAssembly(typeof(Program).Assembly);
-
-    // 🪄 Esta es la forma oficial en MediatR 12+ de conectar el Pipeline Behavior
     cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
 });
 
@@ -24,7 +22,18 @@ builder.Services.AddMediatR(cfg =>
 builder.Services.AddControllers();
 builder.Services.AddValidatorsFromAssembly(typeof(CreateCustomerCommandValidator).Assembly);
 
+// ⚡ 4. AGREGAMOS LOS SERVICIOS DE SWAGGER AQUÍ ⚡
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
 var app = builder.Build();
+
+// ⚡ 5. HABILITAMOS SWAGGER EN EL PIPELINE (Ideal para desarrollo) ⚡
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 // Configure the HTTP request pipeline
 app.UseHttpsRedirection();

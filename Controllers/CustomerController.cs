@@ -17,9 +17,14 @@ public class CustomersController : ControllerBase
         _mediator = mediator;
     }
 
-    // GET: api/customers?tenantId={tenantId}
+    // GET: api/customers?tenantId={tenantId}&searchTerm=juan&isActive=true&pageNumber=1&pageSize=10
     [HttpGet]
-    public async Task<IActionResult> GetCustomers([FromQuery] Guid tenantId)
+    public async Task<IActionResult> GetCustomers(
+        [FromQuery] Guid tenantId,
+        [FromQuery] string? searchTerm = null,
+        [FromQuery] bool? isActive = true,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 10)
     {
         try
         {
@@ -27,8 +32,11 @@ public class CustomersController : ControllerBase
             {
                 return BadRequest("El TenantId es obligatorio para consultar clientes.");
             }
-            var customers = await _mediator.Send(new GetCustomersQuery(tenantId));
-            return Ok(customers);
+
+            var query = new GetCustomersQuery(tenantId, searchTerm, isActive, pageNumber, pageSize);
+            var result = await _mediator.Send(query);
+
+            return Ok(result);
         }
         catch (InvalidOperationException ex)
         {
@@ -130,6 +138,32 @@ public class CustomersController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
+        }
+    }
+
+    // DELETE: api/customers/{id}?tenantId={tenantId}
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteCustomer([FromRoute] Guid id, [FromQuery] Guid tenantId)
+    {
+        if (tenantId == Guid.Empty)
+        {
+            return BadRequest("El TenantId es obligatorio.");
+        }
+
+        try
+        {
+            var result = await _mediator.Send(new DeleteCustomerCommand(id, tenantId));
+
+            if (!result)
+            {
+                return NotFound("El cliente no fue encontrado o no pertenece al Tenant especificado.");
+            }
+
+            return NoContent(); 
         }
         catch (Exception)
         {

@@ -16,33 +16,14 @@ namespace SalesSaaS.Controllers
             _mediator = mediator;
         }
 
-        // 🚀 POST: api/products
-        [HttpPost]
-        public async Task<IActionResult> Create([FromBody] CreateProductCommand command)
-        {
-            if (command == null)
-            {
-                return BadRequest("El cuerpo de la petición no puede ser nulo.");
-            }
-
-            try
-            {
-                var productId = await _mediator.Send(command);
-                return CreatedAtAction(nameof(GetById), new { id = productId, tenantId = command.TenantId }, new { id = productId });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { error = ex.Message });
-            }
-            catch (Exception)
-            {
-                return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
-            }
-        }
-
-        // 🚀 GET: api/products?tenantId=GUID_DEL_TENANT
+        // 🚀 GET: api/products?tenantId=GUID&searchTerm=xxx&isActive=true&pageNumber=1&pageSize=10
         [HttpGet]
-        public async Task<IActionResult> GetAll([FromQuery] Guid tenantId)
+        public async Task<IActionResult> GetProducts(
+            [FromQuery] Guid tenantId,
+            [FromQuery] string? searchTerm = null,
+            [FromQuery] bool? isActive = true,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
         {
             if (tenantId == Guid.Empty)
             {
@@ -51,7 +32,8 @@ namespace SalesSaaS.Controllers
 
             try
             {
-                var products = await _mediator.Send(new GetProductsQuery(tenantId));
+                var query = new GetProductsQuery(tenantId, searchTerm, isActive, pageNumber, pageSize);
+                var products = await _mediator.Send(query);
                 return Ok(products);
             }
             catch (InvalidOperationException ex)
@@ -83,6 +65,30 @@ namespace SalesSaaS.Controllers
                 }
 
                 return Ok(product);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
+            }
+        }
+
+        // 🚀 POST: api/products
+        [HttpPost]
+        public async Task<IActionResult> Create([FromBody] CreateProductCommand command)
+        {
+            if (command == null)
+            {
+                return BadRequest("El cuerpo de la petición no puede ser nulo.");
+            }
+
+            try
+            {
+                var productId = await _mediator.Send(command);
+                return CreatedAtAction(nameof(GetById), new { id = productId, tenantId = command.TenantId }, new { id = productId });
             }
             catch (InvalidOperationException ex)
             {

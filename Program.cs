@@ -1,6 +1,7 @@
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using SalesSaaS.Application.Exceptions;
 using SalesSaaS.Application.Behaviors;
 using SalesSaaS.Features.Customers.Commands;
 using SalesSaaS.Infrastructure;
@@ -21,12 +22,16 @@ builder.Services.AddMediatR(cfg =>
 // 3. Registramos los Controllers y los Validadores de FluentValidation
 builder.Services.AddControllers();
 builder.Services.AddValidatorsFromAssembly(typeof(CreateCustomerCommandValidator).Assembly);
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
 
 // ⚡ 4. AGREGAMOS LOS SERVICIOS DE SWAGGER AQUÍ ⚡
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+app.UseExceptionHandler();
 
 // ⚡ 5. HABILITAMOS SWAGGER EN EL PIPELINE (Ideal para desarrollo) ⚡
 if (app.Environment.IsDevelopment())
@@ -40,11 +45,15 @@ if (app.Environment.IsDevelopment())
 app.UseAuthorization();
 app.MapControllers();
 
-// Asegurar base de datos creada al iniciar (desarrollo)
+// Aplicar migraciones pendientes solamente en desarrollo. En producción,
+// las migraciones deben ejecutarse como parte del despliegue.
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    context.Database.EnsureCreated();
+    if (app.Environment.IsDevelopment())
+    {
+        await context.Database.MigrateAsync();
+    }
 }
 
 app.Run();

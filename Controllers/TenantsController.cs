@@ -26,6 +26,6 @@ public class TenantsController : ControllerBase
 
         var tenantId = await _mediator.Send(command);
 
-        return CreatedAtAction(nameof(Create), new { id = tenantId }, new { id = tenantId });
+        return Created($"/api/tenants/{tenantId}", new { id = tenantId });
     }
 }

@@ -30,20 +30,9 @@ public class ProductsController : ControllerBase
             return BadRequest("El TenantId es obligatorio para consultar productos.");
         }
 
-        try
-        {
-            var query = new GetProductsQuery(tenantId, searchTerm, isActive, pageNumber, pageSize);
-            var products = await _mediator.Send(query);
-            return Ok(products);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
-        }
+        var query = new GetProductsQuery(tenantId, searchTerm, isActive, pageNumber, pageSize);
+        var products = await _mediator.Send(query);
+        return Ok(products);
     }
 
     // 🚀 GET: api/products/GUID_DEL_PRODUCTO?tenantId=GUID_DEL_TENANT
@@ -55,25 +44,14 @@ public class ProductsController : ControllerBase
             return BadRequest("El TenantId es obligatorio para validar la seguridad.");
         }
 
-        try
-        {
-            var product = await _mediator.Send(new GetProductByIdQuery(id, tenantId));
+        var product = await _mediator.Send(new GetProductByIdQuery(id, tenantId));
 
-            if (product == null)
-            {
-                return NotFound("El producto solicitado no existe o no pertenece a este Tenant.");
-            }
+        if (product == null)
+        {
+            return NotFound("El producto solicitado no existe o no pertenece a este Tenant.");
+        }
 
-            return Ok(product);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
-        }
+        return Ok(product);
     }
 
     // 🚀 POST: api/products
@@ -85,19 +63,8 @@ public class ProductsController : ControllerBase
             return BadRequest("El cuerpo de la petición no puede ser nulo.");
         }
 
-        try
-        {
-            var productId = await _mediator.Send(command);
-            return CreatedAtAction(nameof(GetById), new { id = productId, tenantId = command.TenantId }, new { id = productId });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
-        }
+        var productId = await _mediator.Send(command);
+        return CreatedAtAction(nameof(GetById), new { id = productId, tenantId = command.TenantId }, new { id = productId });
     }
 
     // 🚀 PUT: api/products/GUID_DEL_PRODUCTO
@@ -109,25 +76,14 @@ public class ProductsController : ControllerBase
             return BadRequest("El ID del producto no coincide.");
         }
 
-        try
-        {
-            var updated = await _mediator.Send(command);
+        var updated = await _mediator.Send(command);
 
-            if (!updated)
-            {
-                return NotFound("El producto no existe o no pertenece a este Tenant.");
-            }
+        if (!updated)
+        {
+            return NotFound("El producto no existe o no pertenece a este Tenant.");
+        }
 
-            return NoContent();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
-        }
+        return NoContent();
     }
 
     // 🚀 DELETE: api/products/GUID_DEL_PRODUCTO?tenantId=GUID_DEL_TENANT
@@ -139,25 +95,14 @@ public class ProductsController : ControllerBase
             return BadRequest("El TenantId es obligatorio.");
         }
 
-        try
-        {
-            var command = new DeleteProductCommand(productId, tenantId);
-            var deleted = await _mediator.Send(command);
+        var command = new DeleteProductCommand(productId, tenantId);
+        var deleted = await _mediator.Send(command);
 
-            if (!deleted)
-            {
-                return NotFound("El producto no existe o no pertenece a este Tenant.");
-            }
+        if (!deleted)
+        {
+            return NotFound("El producto no existe o no pertenece a este Tenant.");
+        }
 
-            return NoContent();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
-        }
+        return NoContent();
     }
 }

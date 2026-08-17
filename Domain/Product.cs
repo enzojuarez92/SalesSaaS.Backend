@@ -32,6 +32,10 @@ namespace SalesSaaS.Domain
 
         public int MinimumStockAlert { get; set; } 
 
+        // SQL Server la actualiza en cada modificación y EF la usa para evitar
+        // que dos ventas concurrentes sobrescriban el stock entre sí.
+        public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
         public bool IsActive { get; set; } = true;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

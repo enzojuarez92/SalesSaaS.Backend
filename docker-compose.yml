@@ -6,7 +6,7 @@ services:
     container_name: SalesSaaS_SQL_Server
     environment:
       - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=Root123@
+      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:?Definí MSSQL_SA_PASSWORD en tu archivo .env}
     ports:
       - "1433:1433"
     volumes:

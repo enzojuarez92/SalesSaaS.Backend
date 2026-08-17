@@ -1,6 +1,6 @@
 # 🚀 SalesSaaS - Multi-Tenant ERP & Sales System
 
-Un sistema de gestión de ventas y stock SaaS Multi-Tenant desarrollado con **.NET 8** aplicando principios de **Clean Architecture**, **CQRS** y patrones enterprise.
+Un sistema de gestión de ventas y stock SaaS Multi-Tenant desarrollado con **.NET 10** aplicando principios de **Clean Architecture**, **CQRS** y patrones enterprise.
 
 ---
 
@@ -10,13 +10,13 @@ Un sistema de gestión de ventas y stock SaaS Multi-Tenant desarrollado con **.N
 * **CQRS con MediatR:** Desacoplamiento de comandos y consultas.
 * **Pipeline Behaviors:** Validaciones transversales centralizadas con **FluentValidation**.
 * **Persistence:** Entity Framework Core con **Fluent API** (`IEntityTypeConfiguration`) para un `DbContext` ultra limpio.
-* **Database:** SQL Server con soporte Multi-Tenancy por aislamiento lógico (`TenantId`).
+* **Database:** SQL Server con soporte Multi-Tenancy por aislamiento lógico (`TenantId`), migraciones de EF Core y control de concurrencia de stock.
 
 ---
 
 ## 🛠️ Tecnologías Usadas
 
-* **Framework:** .NET 8 / C#
+* **Framework:** .NET 10 / C#
 * **ORM:** Entity Framework Core
 * **Validación:** FluentValidation
 * **Patrón de Mediacions:** MediatR
@@ -25,6 +25,30 @@ Un sistema de gestión de ventas y stock SaaS Multi-Tenant desarrollado con **.N
 
 ## 🚀 Cómo Ejecutar el Proyecto Localmente
 
-1. **Clonar el repositorio:**
+1. **Configurar el contenedor de SQL Server:**
+
    ```bash
-   git clone https://github.com/enzojuarez92/SalesSaaS.Backend.git
+   Copy-Item .env.example .env
+   ```
+
+   Elegí una contraseña segura en `.env` y levantá la base:
+
+   ```bash
+   docker compose up -d
+   ```
+
+2. **Configurar el secreto de conexión para la API:**
+
+   ```bash
+   dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=localhost,1433;Database=SalesSaaSDB;User Id=sa;Password=TU_MISMA_CONTRASENA;TrustServerCertificate=True;"
+   ```
+
+3. **Ejecutar la aplicación:**
+
+   ```bash
+   dotnet run
+   ```
+
+   En desarrollo, la API aplica automáticamente las migraciones pendientes. Swagger queda disponible en la URL que indique la consola.
+
+> `.env` y los User Secrets no se versionan. Nunca agregues contraseñas reales a `appsettings.json`.

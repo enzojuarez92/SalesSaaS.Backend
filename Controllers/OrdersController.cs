@@ -24,18 +24,7 @@ public class OrdersController : ControllerBase
             return BadRequest("El cuerpo de la petición no puede ser nulo.");
         }
 
-        try
-        {
-            var orderId = await _mediator.Send(command);
-            return Created($"/api/orders/{orderId}", new { id = orderId });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
-        }
+        var orderId = await _mediator.Send(command);
+        return Created($"/api/orders/{orderId}", new { id = orderId });
     }
 }

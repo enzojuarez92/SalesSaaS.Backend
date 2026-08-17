@@ -27,7 +27,10 @@ public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand,
 
     public async Task<Guid> Handle(CreateProductCommand request, CancellationToken cancellationToken)
     {
-        var exists = await _context.Products.AnyAsync(p => p.TenantId == request.TenantId && p.Sku == request.Sku, cancellationToken);
+        var exists = await _context.Products.AnyAsync(
+            p => p.TenantId == request.TenantId && p.Sku == request.Sku,
+            cancellationToken
+        );
 
         if (exists)
         {
@@ -50,7 +53,6 @@ public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand,
         };
 
         _context.Products.Add(product);
-
         await _context.SaveChangesAsync(cancellationToken);
 
         return product.Id;

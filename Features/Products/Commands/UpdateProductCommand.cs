@@ -1,6 +1,6 @@
 ﻿using MediatR;
-using SalesSaaS.Infrastructure;
 using Microsoft.EntityFrameworkCore;
+using SalesSaaS.Infrastructure;
 
 namespace SalesSaaS.Features.Products.Commands;
 
@@ -14,7 +14,7 @@ public record UpdateProductCommand(
     decimal Cost,
     int Stock,
     int MinimumStockAlert
-) : IRequest<bool>; 
+) : IRequest<bool>;
 
 public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand, bool>
 {
@@ -32,13 +32,13 @@ public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand,
 
         if (product == null)
         {
-            return false; 
+            return false;
         }
 
         var skuBusy = await _context.Products.AnyAsync(
-            p => p.TenantId == request.TenantId 
-              && p.Sku == request.Sku 
-              && p.Id != request.Id, 
+            p => p.TenantId == request.TenantId
+              && p.Sku == request.Sku
+              && p.Id != request.Id,
             cancellationToken
         );
 

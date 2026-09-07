@@ -14,6 +14,8 @@ using SalesSaaS.Infrastructure;
 using SalesSaaS.Infrastructure.Security;
 using SalesSaaS.Infrastructure.Afip;
 using SalesSaaS.Application.Afip;
+using SalesSaaS.Application.Reporting;
+using SalesSaaS.Infrastructure.Reporting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +40,7 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 builder.Services.AddScoped<IFiscalProfileSecretProtector, FiscalProfileSecretProtector>();
 builder.Services.AddScoped<IAfipService, AfipService>();
+builder.Services.AddSingleton<IReportExportService, ReportExportService>();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

@@ -27,5 +27,7 @@ public class CreateCustomerCommandValidator : AbstractValidator<CreateCustomerCo
 
         RuleFor(x => x.CreditLimit)
             .GreaterThanOrEqualTo(0).WithMessage("El límite de crédito no puede ser negativo.");
+
+        RuleFor(x => x.LegalName).MaximumLength(150).WithMessage("La razón social no puede superar los 150 caracteres.");
     }
 }

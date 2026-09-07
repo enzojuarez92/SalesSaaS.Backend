@@ -11,6 +11,7 @@ public record OrderItemRequest(Guid ProductId, int Quantity);
 public record CreateOrderCommand(
     Guid TenantId,
     Guid CustomerId,
+    Guid WarehouseId,
     List<OrderItemRequest> Items
 ) : IRequest<Guid>, ITenantScopedRequest;
 
@@ -39,6 +40,9 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
             throw new InvalidOperationException("El cliente especificado no existe o no pertenece a este Inquilino.");
         }
 
+        var warehouseExists = await _context.Warehouses.AnyAsync(warehouse => warehouse.Id == request.WarehouseId && warehouse.TenantId == request.TenantId && warehouse.IsActive, cancellationToken);
+        if (!warehouseExists) throw new InvalidOperationException("El depósito no existe o no está activo.");
+
         // 2. Cargar los productos de la BD para verificar precios y stock
         var productIds = request.Items.Select(i => i.ProductId).ToList();
         var products = await _context.Products
@@ -50,6 +54,7 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
             Id = Guid.NewGuid(),
             TenantId = request.TenantId,
             CustomerId = request.CustomerId,
+            WarehouseId = request.WarehouseId,
             OrderDate = DateTime.UtcNow,
             Status = "Completed",
             CreatedAt = DateTime.UtcNow
@@ -87,6 +92,7 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
                 UnitPrice = product.Price,
                 SubTotal = subTotal
             });
+            _context.StockMovements.Add(new StockMovement { Id = Guid.NewGuid(), TenantId = request.TenantId, ProductId = product.Id, WarehouseId = request.WarehouseId, Type = StockMovementType.Issue, Quantity = -itemRequest.Quantity, Reference = order.Id.ToString("N"), Reason = "Venta confirmada" });
         }
 
         order.TotalAmount = totalAmount;

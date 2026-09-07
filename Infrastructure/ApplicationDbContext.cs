@@ -28,6 +28,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
+    public DbSet<Quote> Quotes => Set<Quote>(); public DbSet<QuoteItem> QuoteItems => Set<QuoteItem>();
+    public DbSet<Invoice> Invoices => Set<Invoice>(); public DbSet<CustomerAccountEntry> CustomerAccountEntries => Set<CustomerAccountEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -51,5 +53,9 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Brand>().HasQueryFilter(brand => !_currentUser.TenantId.HasValue || brand.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<Warehouse>().HasQueryFilter(warehouse => !_currentUser.TenantId.HasValue || warehouse.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<StockMovement>().HasQueryFilter(movement => !_currentUser.TenantId.HasValue || movement.TenantId == _currentUser.TenantId);
+        modelBuilder.Entity<Quote>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId);
+        modelBuilder.Entity<QuoteItem>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId);
+        modelBuilder.Entity<Invoice>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId);
+        modelBuilder.Entity<CustomerAccountEntry>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId);
     }
 }

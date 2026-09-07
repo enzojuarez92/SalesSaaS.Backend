@@ -7,6 +7,7 @@ public class Customer
 
     // 📄 Datos de Identificación
     public string Name { get; set; } = string.Empty;
+    public string LegalName { get; set; } = string.Empty;
     public string DocumentType { get; set; } = string.Empty; // "DNI", "CUIT", "CUIL", "Pasaporte"
     public string DocumentNumber { get; set; } = string.Empty;
     public string TaxCondition { get; set; } = string.Empty; // "Responsable Inscripto", "Monotributo", "Consumidor Final"

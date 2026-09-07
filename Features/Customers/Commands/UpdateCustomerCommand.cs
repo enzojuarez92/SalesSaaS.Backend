@@ -21,7 +21,8 @@ public record UpdateCustomerCommand(
     string PostalCode,
     decimal CreditLimit,
     bool AllowCredit,
-    bool IsActive
+    bool IsActive,
+    string LegalName = ""
 ) : IRequest<Customer?>, ITenantScopedRequest;
 public class UpdateCustomerCommandHandler : IRequestHandler<UpdateCustomerCommand, Customer?>
 {
@@ -43,6 +44,7 @@ public class UpdateCustomerCommandHandler : IRequestHandler<UpdateCustomerComman
         }
 
         customer.Name = request.Name;
+        customer.LegalName = string.IsNullOrWhiteSpace(request.LegalName) ? request.Name : request.LegalName;
         customer.DocumentType = request.DocumentType;
         customer.DocumentNumber = request.DocumentNumber;
         customer.TaxCondition = request.TaxCondition;

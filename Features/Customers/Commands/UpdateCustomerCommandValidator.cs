@@ -14,5 +14,6 @@ public sealed class UpdateCustomerCommandValidator : AbstractValidator<UpdateCus
         RuleFor(command => command.TaxCondition).NotEmpty().MaximumLength(50);
         RuleFor(command => command.Email).EmailAddress().When(command => !string.IsNullOrWhiteSpace(command.Email));
         RuleFor(command => command.CreditLimit).GreaterThanOrEqualTo(0);
+        RuleFor(command => command.LegalName).MaximumLength(150);
     }
 }

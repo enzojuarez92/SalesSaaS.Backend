@@ -19,7 +19,8 @@ public record CreateCustomerCommand(
     string State,
     string PostalCode,
     decimal CreditLimit,
-    bool AllowCredit
+    bool AllowCredit,
+    string LegalName = ""
 ) : IRequest<Guid>, ITenantScopedRequest;
 
 public class CreateCustomerCommandHandler : IRequestHandler<CreateCustomerCommand, Guid>
@@ -46,6 +47,7 @@ public class CreateCustomerCommandHandler : IRequestHandler<CreateCustomerComman
             Id = Guid.NewGuid(),
             TenantId = request.TenantId,
             Name = request.Name,
+            LegalName = string.IsNullOrWhiteSpace(request.LegalName) ? request.Name : request.LegalName,
             DocumentType = request.DocumentType, 
             DocumentNumber = request.DocumentNumber,
             TaxCondition = request.TaxCondition,

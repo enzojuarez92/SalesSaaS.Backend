@@ -13,6 +13,7 @@ public class Order
 
     [Required]
     public Guid CustomerId { get; set; }
+    public Guid WarehouseId { get; set; }
 
     public DateTime OrderDate { get; set; } = DateTime.UtcNow;
 
@@ -29,6 +30,7 @@ public class Order
 
     [ForeignKey(nameof(CustomerId))]
     public virtual Customer? Customer { get; set; }
+    public Warehouse? Warehouse { get; set; }
 
     public virtual ICollection<OrderItem> Items { get; set; } = new List<OrderItem>();
 }

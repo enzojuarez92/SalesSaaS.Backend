@@ -18,6 +18,8 @@ using SalesSaaS.Application.Reporting;
 using SalesSaaS.Infrastructure.Reporting;
 using SalesSaaS.Application.Billing;
 using SalesSaaS.Infrastructure.Billing;
+using SalesSaaS.Application.Notifications;
+using SalesSaaS.Infrastructure.Notifications;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -45,6 +47,11 @@ builder.Services.AddScoped<IAfipService, AfipService>();
 builder.Services.AddSingleton<IReportExportService, ReportExportService>();
 builder.Services.AddScoped<IPaymentGatewayService, DevelopmentPaymentGatewayService>();
 builder.Services.AddScoped<ISubscriptionGatekeeper, SubscriptionGatekeeper>();
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
+builder.Services.AddScoped<IEmailService, MailKitEmailService>();
+builder.Services.AddSingleton<IEmailTemplateService, EmailTemplateService>();
+builder.Services.AddSingleton<IEmailQueue, EmailQueue>();
+builder.Services.AddHostedService<EmailBackgroundService>();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

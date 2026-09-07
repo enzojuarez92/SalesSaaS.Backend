@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Security;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
+using SalesSaaS.Features.Notifications;
 
 namespace SalesSaaS.Features.Inventory.Stock;
 
@@ -37,7 +38,7 @@ public sealed class TransferStockCommandValidator : AbstractValidator<TransferSt
     }
 }
 
-public sealed class RecordStockMovementCommandHandler(ApplicationDbContext context) : IRequestHandler<RecordStockMovementCommand, Guid>
+public sealed class RecordStockMovementCommandHandler(ApplicationDbContext context, IPublisher publisher) : IRequestHandler<RecordStockMovementCommand, Guid>
 {
     public async Task<Guid> Handle(RecordStockMovementCommand request, CancellationToken cancellationToken)
     {
@@ -49,10 +50,12 @@ public sealed class RecordStockMovementCommandHandler(ApplicationDbContext conte
         var delta = GetDelta(request.Type, request.Quantity);
         if (delta < 0 && product.Stock + delta < 0) throw new InvalidOperationException("No hay stock total suficiente para registrar la salida.");
 
+        var previousStock = product.Stock;
         product.Stock += delta;
         var movement = new StockMovement { Id = Guid.NewGuid(), TenantId = request.TenantId, ProductId = request.ProductId, WarehouseId = request.WarehouseId, Type = request.Type, Quantity = delta, Reason = request.Reason?.Trim(), Reference = request.Reference?.Trim() };
         context.StockMovements.Add(movement);
         await context.SaveChangesAsync(cancellationToken);
+        if (previousStock > product.MinimumStockAlert && product.Stock <= product.MinimumStockAlert) await publisher.Publish(new LowStockReachedEvent(request.TenantId, product.Id, product.Name, product.Stock), cancellationToken);
         return movement.Id;
     }
 

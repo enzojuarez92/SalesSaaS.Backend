@@ -21,6 +21,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
     public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
     public DbSet<SaaSInvoice> SaaSInvoices => Set<SaaSInvoice>();
+    public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();
@@ -50,6 +51,8 @@ public class ApplicationDbContext : DbContext
             !_currentUser.TenantId.HasValue || subscription.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<SaaSInvoice>().HasQueryFilter(invoice =>
             !_currentUser.TenantId.HasValue || invoice.TenantId == _currentUser.TenantId);
+        modelBuilder.Entity<Notification>().HasQueryFilter(notification =>
+            !_currentUser.TenantId.HasValue || notification.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<Customer>().HasQueryFilter(customer =>
             !_currentUser.TenantId.HasValue || customer.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<Order>().HasQueryFilter(order =>

@@ -10,6 +10,7 @@ using SalesSaaS.Application.Security;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
 using SalesSaaS.Infrastructure.Afip;
+using SalesSaaS.Features.Notifications;
 
 namespace SalesSaaS.Features.Afip;
 
@@ -99,7 +100,7 @@ public sealed class GetTenantFiscalProfileQueryHandler(ApplicationDbContext cont
             .Select(item => new TenantFiscalProfileDto(item.Id, item.IssuerTaxId, item.CertificateAlias, item.IsPfxCertificate, item.Environment, item.SalesPoint, item.DefaultConcept, item.IsActive, item.UpdatedAtUtc)).SingleOrDefaultAsync(cancellationToken);
 }
 
-public sealed class AuthorizeInvoiceCommandHandler(ApplicationDbContext context, IAfipService afipService, ISubscriptionGatekeeper subscriptionGatekeeper, ILogger<AuthorizeInvoiceCommandHandler> logger) : IRequestHandler<AuthorizeInvoiceCommand, AfipInvoiceAuthorizationDto>
+public sealed class AuthorizeInvoiceCommandHandler(ApplicationDbContext context, IAfipService afipService, ISubscriptionGatekeeper subscriptionGatekeeper, IPublisher publisher, ILogger<AuthorizeInvoiceCommandHandler> logger) : IRequestHandler<AuthorizeInvoiceCommand, AfipInvoiceAuthorizationDto>
 {
     public async Task<AfipInvoiceAuthorizationDto> Handle(AuthorizeInvoiceCommand request, CancellationToken cancellationToken)
     {
@@ -130,6 +131,7 @@ public sealed class AuthorizeInvoiceCommandHandler(ApplicationDbContext context,
             invoice.AfipErrors = authorization.Errors;
             invoice.BarCode = authorization.IsApproved && authorization.Cae is not null ? BuildAfipQrUrl(profile, request.VoucherType, lastVoucherNumber + 1, invoice, documentType, documentNumber, authorization.Cae) : null;
             await context.SaveChangesAsync(cancellationToken);
+            if (authorization.IsApproved && authorization.Cae is not null) await publisher.Publish(new InvoiceAuthorizedEvent(request.TenantId, invoice.Id, invoice.Number, authorization.Cae, customer.Email, customer.Name, invoice.TotalAmount), cancellationToken);
             return new AfipInvoiceAuthorizationDto(invoice.Id, authorization.IsApproved, invoice.Cae, invoice.CaeExpirationDate, invoice.BarCode, invoice.AfipErrors);
         }
         catch (Exception exception)

@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Security;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
+using SalesSaaS.Features.Notifications;
 
 namespace SalesSaaS.Features.Authentication.Commands;
 
@@ -36,7 +37,8 @@ public sealed class RegisterTenantCommandHandler(
     ApplicationDbContext context,
     IPasswordHasher<User> passwordHasher,
     IJwtTokenService tokenService,
-    IRefreshTokenService refreshTokenService) : IRequestHandler<RegisterTenantCommand, AuthResponse>
+    IRefreshTokenService refreshTokenService,
+    IPublisher publisher) : IRequestHandler<RegisterTenantCommand, AuthResponse>
 {
     public async Task<AuthResponse> Handle(RegisterTenantCommand request, CancellationToken cancellationToken)
     {
@@ -70,6 +72,7 @@ public sealed class RegisterTenantCommandHandler(
         var refreshToken = refreshTokenService.Create(user.Id, tenant.Id);
         context.RefreshTokens.Add(refreshToken.Entity);
         await context.SaveChangesAsync(cancellationToken);
+        await publisher.Publish(new WelcomeTenantRegisteredEvent(tenant.Id, user.Id, $"{user.FirstName} {user.LastName}", user.Email, tenant.Name), cancellationToken);
 
         return AuthResponse.From(tokenService.Create(user, membership), refreshToken, user, membership);
     }

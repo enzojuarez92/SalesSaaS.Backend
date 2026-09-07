@@ -2,6 +2,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Security;
+using SalesSaaS.Application.Billing;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
 
@@ -22,10 +23,11 @@ public sealed class CreateWarehouseCommandValidator : AbstractValidator<CreateWa
     }
 }
 
-public sealed class CreateWarehouseCommandHandler(ApplicationDbContext context) : IRequestHandler<CreateWarehouseCommand, Guid>
+public sealed class CreateWarehouseCommandHandler(ApplicationDbContext context, ISubscriptionGatekeeper subscriptionGatekeeper) : IRequestHandler<CreateWarehouseCommand, Guid>
 {
     public async Task<Guid> Handle(CreateWarehouseCommand request, CancellationToken cancellationToken)
     {
+        await subscriptionGatekeeper.EnsureCanAddWarehouseAsync(request.TenantId, cancellationToken);
         var code = request.Code.Trim().ToUpperInvariant();
         if (await context.Warehouses.AnyAsync(warehouse => warehouse.TenantId == request.TenantId && warehouse.Code == code, cancellationToken))
             throw new InvalidOperationException("Ya existe un depósito con ese código.");

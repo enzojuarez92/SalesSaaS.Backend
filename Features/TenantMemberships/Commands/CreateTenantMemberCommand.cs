@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Security;
+using SalesSaaS.Application.Billing;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
 
@@ -34,10 +35,12 @@ public sealed class CreateTenantMemberCommandValidator : AbstractValidator<Creat
 
 public sealed class CreateTenantMemberCommandHandler(
     ApplicationDbContext context,
-    IPasswordHasher<User> passwordHasher) : IRequestHandler<CreateTenantMemberCommand, Guid>
+    IPasswordHasher<User> passwordHasher,
+    ISubscriptionGatekeeper subscriptionGatekeeper) : IRequestHandler<CreateTenantMemberCommand, Guid>
 {
     public async Task<Guid> Handle(CreateTenantMemberCommand request, CancellationToken cancellationToken)
     {
+        await subscriptionGatekeeper.EnsureCanAddUserAsync(request.TenantId, cancellationToken);
         var email = request.Email.Trim().ToLowerInvariant();
         if (await context.Users.AnyAsync(user => user.Email == email, cancellationToken))
         {

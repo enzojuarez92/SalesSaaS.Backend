@@ -5,6 +5,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Afip;
+using SalesSaaS.Application.Billing;
 using SalesSaaS.Application.Security;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
@@ -98,10 +99,11 @@ public sealed class GetTenantFiscalProfileQueryHandler(ApplicationDbContext cont
             .Select(item => new TenantFiscalProfileDto(item.Id, item.IssuerTaxId, item.CertificateAlias, item.IsPfxCertificate, item.Environment, item.SalesPoint, item.DefaultConcept, item.IsActive, item.UpdatedAtUtc)).SingleOrDefaultAsync(cancellationToken);
 }
 
-public sealed class AuthorizeInvoiceCommandHandler(ApplicationDbContext context, IAfipService afipService, ILogger<AuthorizeInvoiceCommandHandler> logger) : IRequestHandler<AuthorizeInvoiceCommand, AfipInvoiceAuthorizationDto>
+public sealed class AuthorizeInvoiceCommandHandler(ApplicationDbContext context, IAfipService afipService, ISubscriptionGatekeeper subscriptionGatekeeper, ILogger<AuthorizeInvoiceCommandHandler> logger) : IRequestHandler<AuthorizeInvoiceCommand, AfipInvoiceAuthorizationDto>
 {
     public async Task<AfipInvoiceAuthorizationDto> Handle(AuthorizeInvoiceCommand request, CancellationToken cancellationToken)
     {
+        await subscriptionGatekeeper.EnsureAfipIsAvailableAsync(request.TenantId, cancellationToken);
         var invoice = await context.Invoices.SingleOrDefaultAsync(item => item.Id == request.InvoiceId && item.TenantId == request.TenantId, cancellationToken)
             ?? throw new InvalidOperationException("La factura no existe.");
         if (invoice.Status != "Issued") throw new InvalidOperationException("Sólo se pueden autorizar facturas emitidas.");

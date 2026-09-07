@@ -2,6 +2,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Security;
+using SalesSaaS.Application.Billing;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
 
@@ -33,10 +34,11 @@ public sealed class CreateQuoteCommandHandler(ApplicationDbContext context) : IR
         context.Quotes.Add(quote); await context.SaveChangesAsync(cancellationToken); return quote.Id;
     }
 }
-public sealed class CreateInvoiceFromOrderCommandHandler(ApplicationDbContext context) : IRequestHandler<CreateInvoiceFromOrderCommand, Guid>
+public sealed class CreateInvoiceFromOrderCommandHandler(ApplicationDbContext context, ISubscriptionGatekeeper subscriptionGatekeeper) : IRequestHandler<CreateInvoiceFromOrderCommand, Guid>
 {
     public async Task<Guid> Handle(CreateInvoiceFromOrderCommand request, CancellationToken cancellationToken)
     {
+        await subscriptionGatekeeper.EnsureCanIssueInvoiceAsync(request.TenantId, cancellationToken);
         var order = await context.Orders.Include(item => item.Items).SingleOrDefaultAsync(item => item.Id == request.OrderId && item.TenantId == request.TenantId, cancellationToken) ?? throw new InvalidOperationException("El pedido no existe.");
         if (order.Status == "Cancelled") throw new InvalidOperationException("No se puede facturar un pedido cancelado.");
         if (await context.Invoices.AnyAsync(item => item.OrderId == order.Id && item.Status == "Issued", cancellationToken)) throw new InvalidOperationException("El pedido ya posee una factura emitida.");

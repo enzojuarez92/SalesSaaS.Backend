@@ -16,6 +16,8 @@ using SalesSaaS.Infrastructure.Afip;
 using SalesSaaS.Application.Afip;
 using SalesSaaS.Application.Reporting;
 using SalesSaaS.Infrastructure.Reporting;
+using SalesSaaS.Application.Billing;
+using SalesSaaS.Infrastructure.Billing;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,6 +43,8 @@ builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 builder.Services.AddScoped<IFiscalProfileSecretProtector, FiscalProfileSecretProtector>();
 builder.Services.AddScoped<IAfipService, AfipService>();
 builder.Services.AddSingleton<IReportExportService, ReportExportService>();
+builder.Services.AddScoped<IPaymentGatewayService, DevelopmentPaymentGatewayService>();
+builder.Services.AddScoped<ISubscriptionGatekeeper, SubscriptionGatekeeper>();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -96,6 +100,7 @@ if (app.Environment.IsDevelopment())
 // Configure the HTTP request pipeline
 //app.UseHttpsRedirection();
 app.UseAuthentication();
+app.UseMiddleware<SubscriptionGatekeeperMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 

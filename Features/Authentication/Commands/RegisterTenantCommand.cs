@@ -58,7 +58,15 @@ public sealed class RegisterTenantCommandHandler(
             Role = Roles.Owner
         };
 
-        context.AddRange(tenant, user, membership);
+        var defaultPlan = await context.SubscriptionPlans.SingleOrDefaultAsync(plan => plan.IsDefault && plan.IsActive, cancellationToken);
+        if (defaultPlan is null)
+        {
+            defaultPlan = new SubscriptionPlan { Id = Guid.NewGuid(), Name = "Basic", MonthlyPrice = 0, AnnualPrice = 0, Currency = "ARS", MaxUsers = 3, MaxWarehouses = 1, MaxInvoicesPerMonth = 25, SupportsAfip = false, IsDefault = true };
+            context.SubscriptionPlans.Add(defaultPlan);
+        }
+        var subscription = new TenantSubscription { Id = Guid.NewGuid(), TenantId = tenant.Id, SubscriptionPlanId = defaultPlan.Id, Status = SubscriptionStatus.Trialing, StartsAtUtc = DateTime.UtcNow, ExpiresAtUtc = DateTime.UtcNow.AddDays(14), AutoRenew = false };
+
+        context.AddRange(tenant, user, membership, subscription);
         var refreshToken = refreshTokenService.Create(user.Id, tenant.Id);
         context.RefreshTokens.Add(refreshToken.Entity);
         await context.SaveChangesAsync(cancellationToken);

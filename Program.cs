@@ -20,6 +20,9 @@ using SalesSaaS.Application.Billing;
 using SalesSaaS.Infrastructure.Billing;
 using SalesSaaS.Application.Notifications;
 using SalesSaaS.Infrastructure.Notifications;
+using SalesSaaS.Infrastructure.Health;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,6 +42,16 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddDataProtection();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("Afip", client => client.Timeout = TimeSpan.FromSeconds(45));
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"])
+    .AddCheck<AfipHealthCheck>("afip", tags: ["ready", "external"])
+    .AddCheck<EmailQueueHealthCheck>("email-queue", tags: ["ready"]);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth", httpContext => RateLimitPartition.GetFixedWindowLimiter(httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
+    options.AddPolicy("billing", httpContext => RateLimitPartition.GetSlidingWindowLimiter(httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new SlidingWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), SegmentsPerWindow = 6, QueueLimit = 0, AutoReplenishment = true }));
+});
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
@@ -108,8 +121,11 @@ if (app.Environment.IsDevelopment())
 //app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseMiddleware<SubscriptionGatekeeperMiddleware>();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health").AllowAnonymous();
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
 
 // Aplicar migraciones pendientes solamente en desarrollo. En producción,
 // las migraciones deben ejecutarse como parte del despliegue.

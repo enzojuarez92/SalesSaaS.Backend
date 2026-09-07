@@ -2,6 +2,7 @@ using MediatR;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using SalesSaaS.Domain;
 using SalesSaaS.Features.Billing;
 
@@ -10,6 +11,7 @@ namespace SalesSaaS.Controllers;
 [ApiController]
 [Route("api/billing")]
 [Authorize]
+[EnableRateLimiting("billing")]
 public sealed class BillingController(IMediator mediator) : ControllerBase
 {
     [HttpGet("plans")]

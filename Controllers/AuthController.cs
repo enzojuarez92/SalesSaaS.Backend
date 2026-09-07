@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using SalesSaaS.Features.Authentication;
 using SalesSaaS.Features.Authentication.Commands;
 
@@ -9,6 +10,7 @@ namespace SalesSaaS.Controllers;
 [ApiController]
 [Route("api/auth")]
 [AllowAnonymous]
+[EnableRateLimiting("auth")]
 public sealed class AuthController(IMediator mediator) : ControllerBase
 {
     [HttpPost("register")]

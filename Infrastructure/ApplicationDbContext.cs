@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Security;
 using SalesSaaS.Domain;
@@ -8,6 +9,7 @@ namespace SalesSaaS.Infrastructure;
 public class ApplicationDbContext : DbContext
 {
     private readonly ICurrentUser _currentUser;
+    private bool _isWritingAudit;
 
     public ApplicationDbContext(
         DbContextOptions<ApplicationDbContext> options,
@@ -22,6 +24,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
     public DbSet<SaaSInvoice> SaaSInvoices => Set<SaaSInvoice>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();
@@ -36,6 +39,40 @@ public class ApplicationDbContext : DbContext
     public DbSet<Quote> Quotes => Set<Quote>(); public DbSet<QuoteItem> QuoteItems => Set<QuoteItem>();
     public DbSet<Invoice> Invoices => Set<Invoice>(); public DbSet<CustomerAccountEntry> CustomerAccountEntries => Set<CustomerAccountEntry>();
     public DbSet<Supplier> Suppliers => Set<Supplier>(); public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>(); public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>(); public DbSet<PurchaseInvoice> PurchaseInvoices => Set<PurchaseInvoice>(); public DbSet<SupplierAccountEntry> SupplierAccountEntries => Set<SupplierAccountEntry>(); public DbSet<CashRegisterSession> CashRegisterSessions => Set<CashRegisterSession>(); public DbSet<CashMovement> CashMovements => Set<CashMovement>();
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        AddAuditLogs();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        AddAuditLogs();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void AddAuditLogs()
+    {
+        if (_isWritingAudit) return;
+        _isWritingAudit = true;
+        try
+        {
+            ChangeTracker.DetectChanges();
+            var entries = ChangeTracker.Entries().Where(entry => entry.Entity is not AuditLog && entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList();
+            foreach (var entry in entries)
+            {
+                var tenantProperty = entry.Properties.FirstOrDefault(property => property.Metadata.Name == "TenantId");
+                if (tenantProperty?.CurrentValue is not Guid tenantId || tenantId == Guid.Empty) continue;
+                var action = entry.State == EntityState.Added ? AuditAction.Create : entry.State == EntityState.Deleted ? AuditAction.Delete : AuditAction.Update;
+                var values = entry.Properties.Where(property => !IsSensitive(property.Metadata.Name) && (entry.State != EntityState.Modified || property.IsModified)).ToDictionary(property => property.Metadata.Name, property => new { Old = entry.State == EntityState.Added ? null : property.OriginalValue, New = entry.State == EntityState.Deleted ? null : property.CurrentValue });
+                AuditLogs.Add(new AuditLog { Id = Guid.NewGuid(), TenantId = tenantId, UserId = _currentUser.UserId, EntityName = entry.Metadata.ClrType.Name, Action = action, ChangesJson = JsonSerializer.Serialize(values), TimestampUtc = DateTime.UtcNow });
+            }
+        }
+        finally { _isWritingAudit = false; }
+    }
+
+    private static bool IsSensitive(string propertyName) => propertyName.Contains("Password", StringComparison.OrdinalIgnoreCase) || propertyName.Contains("Token", StringComparison.OrdinalIgnoreCase) || propertyName.Contains("Certificate", StringComparison.OrdinalIgnoreCase) || propertyName.Contains("PrivateKey", StringComparison.OrdinalIgnoreCase) || propertyName.Contains("Passphrase", StringComparison.OrdinalIgnoreCase);
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,6 +90,8 @@ public class ApplicationDbContext : DbContext
             !_currentUser.TenantId.HasValue || invoice.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<Notification>().HasQueryFilter(notification =>
             !_currentUser.TenantId.HasValue || notification.TenantId == _currentUser.TenantId);
+        modelBuilder.Entity<AuditLog>().HasQueryFilter(log =>
+            !_currentUser.TenantId.HasValue || log.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<Customer>().HasQueryFilter(customer =>
             !_currentUser.TenantId.HasValue || customer.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<Order>().HasQueryFilter(order =>

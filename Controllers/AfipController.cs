@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using SalesSaaS.Domain;
 using SalesSaaS.Features.Afip;
 
@@ -9,6 +10,7 @@ namespace SalesSaaS.Controllers;
 [ApiController]
 [Route("api/afip")]
 [Authorize(Roles = Roles.Administration)]
+[EnableRateLimiting("billing")]
 public sealed class AfipController(IMediator mediator) : ControllerBase
 {
     [HttpPut("fiscal-profile")]

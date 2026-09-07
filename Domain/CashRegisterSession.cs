@@ -1,0 +1,2 @@
+namespace SalesSaaS.Domain;
+public sealed class CashRegisterSession { public Guid Id { get; set; } public Guid TenantId { get; set; } public Guid WarehouseId { get; set; } public decimal OpeningBalance { get; set; } public decimal? ClosingBalance { get; set; } public DateTime OpenedAtUtc { get; set; } = DateTime.UtcNow; public DateTime? ClosedAtUtc { get; set; } public string Status { get; set; } = "Open"; }

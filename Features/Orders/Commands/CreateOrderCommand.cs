@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
+using SalesSaaS.Application.Security;
 
 namespace SalesSaaS.Features.Orders.Commands;
 
@@ -11,7 +12,7 @@ public record CreateOrderCommand(
     Guid TenantId,
     Guid CustomerId,
     List<OrderItemRequest> Items
-) : IRequest<Guid>;
+) : IRequest<Guid>, ITenantScopedRequest;
 
 public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Guid>
 {

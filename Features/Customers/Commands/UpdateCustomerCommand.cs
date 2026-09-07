@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
+using SalesSaaS.Application.Security;
 
 namespace SalesSaaS.Features.Customers.Commands;
 
@@ -21,7 +22,7 @@ public record UpdateCustomerCommand(
     decimal CreditLimit,
     bool AllowCredit,
     bool IsActive
-) : IRequest<Customer?>; 
+) : IRequest<Customer?>, ITenantScopedRequest;
 public class UpdateCustomerCommandHandler : IRequestHandler<UpdateCustomerCommand, Customer?>
 {
     private readonly ApplicationDbContext _context;

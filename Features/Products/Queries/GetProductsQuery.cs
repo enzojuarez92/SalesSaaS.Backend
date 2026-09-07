@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Common;
 using SalesSaaS.Infrastructure;
+using SalesSaaS.Application.Security;
 
 namespace SalesSaaS.Features.Products.Queries;
 
@@ -11,12 +12,14 @@ public record GetProductsQuery(
     bool? IsActive = true,
     int PageNumber = 1,
     int PageSize = 10
-) : IRequest<PagedResult<ProductDto>>;
+) : IRequest<PagedResult<ProductDto>>, ITenantScopedRequest;
 
 public record ProductDto(
     Guid Id,
     string Sku,
     string Name,
+    Guid? CategoryId,
+    Guid? BrandId,
     string Description,
     decimal Price,
     decimal Cost,
@@ -68,6 +71,8 @@ public class GetProductsQueryHandler : IRequestHandler<GetProductsQuery, PagedRe
                 p.Id,
                 p.Sku,
                 p.Name,
+                p.CategoryId,
+                p.BrandId,
                 p.Description,
                 p.Price,
                 p.Cost,

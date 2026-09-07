@@ -52,3 +52,16 @@ Un sistema de gestión de ventas y stock SaaS Multi-Tenant desarrollado con **.N
    En desarrollo, la API aplica automáticamente las migraciones pendientes. Swagger queda disponible en la URL que indique la consola.
 
 > `.env` y los User Secrets no se versionan. Nunca agregues contraseñas reales a `appsettings.json`.
+
+## Autenticación local
+
+Antes de ejecutar la API, configurá una clave JWT local (mínimo 32 caracteres):
+
+```powershell
+dotnet user-secrets set "Jwt:Key" "una-clave-local-larga-y-segura-de-32-caracteres"
+```
+
+Usá `POST /api/auth/register` para crear el primer negocio y su usuario `Owner`.
+Luego `POST /api/auth/login` devuelve un token Bearer con el tenant y el rol. El
+`Owner` puede crear usuarios `Admin`, `Seller` o `Warehouse` mediante
+`POST /api/tenant-members`.

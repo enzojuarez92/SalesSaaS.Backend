@@ -10,6 +10,8 @@ namespace SalesSaaS.Domain
 
         [Required]
         public Guid TenantId { get; set; }
+        public Guid? CategoryId { get; set; }
+        public Guid? BrandId { get; set; }
 
         [Required]
         [StringLength(50)]
@@ -42,5 +44,7 @@ namespace SalesSaaS.Domain
 
         [ForeignKey(nameof(TenantId))]
         public virtual Tenant? Tenant { get; set; }
+        public Category? Category { get; set; }
+        public Brand? Brand { get; set; }
     }
 }

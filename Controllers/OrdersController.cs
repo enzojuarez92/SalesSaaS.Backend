@@ -1,5 +1,7 @@
 ﻿using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SalesSaaS.Domain;
 using SalesSaaS.Features.Orders.Commands;
 
 namespace SalesSaaS.Controllers;
@@ -17,6 +19,7 @@ public class OrdersController : ControllerBase
 
     // 🚀 POST: api/orders
     [HttpPost]
+    [Authorize(Roles = Roles.Sales)]
     public async Task<IActionResult> CreateOrder([FromBody] CreateOrderCommand command)
     {
         if (command == null)

@@ -1,6 +1,7 @@
 ﻿using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Infrastructure;
+using SalesSaaS.Application.Security;
 
 namespace SalesSaaS.Features.Products.Commands;
 
@@ -13,8 +14,10 @@ public record UpdateProductCommand(
     decimal Price,
     decimal Cost,
     int Stock,
-    int MinimumStockAlert
-) : IRequest<bool>;
+    int MinimumStockAlert,
+    Guid? CategoryId = null,
+    Guid? BrandId = null
+) : IRequest<bool>, ITenantScopedRequest;
 
 public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand, bool>
 {
@@ -47,6 +50,11 @@ public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand,
             throw new InvalidOperationException($"El SKU '{request.Sku}' ya está siendo utilizado por otro producto.");
         }
 
+        if (request.CategoryId.HasValue && !await _context.Categories.AnyAsync(category => category.Id == request.CategoryId && category.TenantId == request.TenantId && category.IsActive, cancellationToken))
+            throw new InvalidOperationException("La categoría no existe o no está activa.");
+        if (request.BrandId.HasValue && !await _context.Brands.AnyAsync(brand => brand.Id == request.BrandId && brand.TenantId == request.TenantId && brand.IsActive, cancellationToken))
+            throw new InvalidOperationException("La marca no existe o no está activa.");
+
         product.Sku = request.Sku;
         product.Name = request.Name;
         product.Description = request.Description;
@@ -54,6 +62,8 @@ public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand,
         product.Cost = request.Cost;
         product.Stock = request.Stock;
         product.MinimumStockAlert = request.MinimumStockAlert;
+        product.CategoryId = request.CategoryId;
+        product.BrandId = request.BrandId;
 
         await _context.SaveChangesAsync(cancellationToken);
 

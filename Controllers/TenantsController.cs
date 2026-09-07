@@ -1,5 +1,7 @@
 ﻿using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SalesSaaS.Domain;
 using SalesSaaS.Features.Tenants.Commands;
 
 namespace SalesSaaS.Controllers;
@@ -17,6 +19,7 @@ public class TenantsController : ControllerBase
 
     // 🚀 POST: api/tenants
     [HttpPost]
+    [Authorize(Roles = Roles.Owner)]
     public async Task<IActionResult> Create([FromBody] CreateTenantCommand command)
     {
         if (command == null)

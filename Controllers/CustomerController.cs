@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using SalesSaaS.Features.Customers.Commands;
 using SalesSaaS.Features.Customers.Queries; // 👈 Asegurate de tener este using
+using SalesSaaS.Domain;
 
 namespace SalesSaaS.Controllers;
 
@@ -18,6 +20,7 @@ public class CustomersController : ControllerBase
 
     // GET: api/customers?tenantId={tenantId}&searchTerm=juan&isActive=true&pageNumber=1&pageSize=10
     [HttpGet]
+    [Authorize(Roles = Roles.Sales)]
     public async Task<IActionResult> GetCustomers(
         [FromQuery] Guid tenantId,
         [FromQuery] string? searchTerm = null,
@@ -38,6 +41,7 @@ public class CustomersController : ControllerBase
 
     // GET: api/customers/{id}?tenantId={tenantId}
     [HttpGet("{id}")]
+    [Authorize(Roles = Roles.Sales)]
     public async Task<IActionResult> GetCustomerById([FromRoute] Guid id, [FromQuery] Guid tenantId)
     {
         if (tenantId == Guid.Empty)
@@ -55,6 +59,7 @@ public class CustomersController : ControllerBase
 
     // POST: api/customers
     [HttpPost]
+    [Authorize(Roles = Roles.Sales)]
     public async Task<IActionResult> CreateCustomer([FromBody] CreateCustomerCommand command)
     {
         var customerId = await _mediator.Send(command);
@@ -63,6 +68,7 @@ public class CustomersController : ControllerBase
 
     // PUT: api/customers/{id}
     [HttpPut("{id}")]
+    [Authorize(Roles = Roles.Sales)]
     public async Task<IActionResult> UpdateCustomer(Guid id, [FromBody] UpdateCustomerCommand command)
     {
         if (id != command.Id)
@@ -82,6 +88,7 @@ public class CustomersController : ControllerBase
 
     // DELETE: api/customers/{id}?tenantId={tenantId}
     [HttpDelete("{id}")]
+    [Authorize(Roles = Roles.Sales)]
     public async Task<IActionResult> DeleteCustomer([FromRoute] Guid id, [FromQuery] Guid tenantId)
     {
         if (tenantId == Guid.Empty)

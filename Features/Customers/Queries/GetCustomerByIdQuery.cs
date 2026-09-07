@@ -1,10 +1,11 @@
 ﻿using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Infrastructure;
+using SalesSaaS.Application.Security;
 
 namespace SalesSaaS.Features.Customers.Queries
 {
-    public record GetCustomerByIdQuery(Guid CustomerId, Guid TenantId) : IRequest<CustomerDto?>;
+    public record GetCustomerByIdQuery(Guid CustomerId, Guid TenantId) : IRequest<CustomerDto?>, ITenantScopedRequest;
     public class GetCustomerByIdQueryHandler : IRequestHandler<GetCustomerByIdQuery, CustomerDto?>
     {
         private readonly ApplicationDbContext _context;

@@ -1,9 +1,10 @@
 ﻿using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Infrastructure;
+using SalesSaaS.Application.Security;
 
 namespace SalesSaaS.Features.Customers.Commands;
-public record DeleteCustomerCommand(Guid Id, Guid TenantId) : IRequest<bool>;
+public record DeleteCustomerCommand(Guid Id, Guid TenantId) : IRequest<bool>, ITenantScopedRequest;
 
 public class DeleteCustomerCommandHandler : IRequestHandler<DeleteCustomerCommand, bool>
 {

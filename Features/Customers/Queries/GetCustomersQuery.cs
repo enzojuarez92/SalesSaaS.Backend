@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Common;
 using SalesSaaS.Infrastructure;
+using SalesSaaS.Application.Security;
 
 namespace SalesSaaS.Features.Customers.Queries;
 
@@ -11,7 +12,7 @@ public record GetCustomersQuery(
     bool? IsActive = true, // 👈 Por defecto busca activos
     int PageNumber = 1,
     int PageSize = 10
-) : IRequest<PagedResult<CustomerDto>>;
+) : IRequest<PagedResult<CustomerDto>>, ITenantScopedRequest;
 
 public record CustomerDto(
     Guid Id,

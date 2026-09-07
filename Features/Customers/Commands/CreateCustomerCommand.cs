@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
+using SalesSaaS.Application.Security;
 
 namespace SalesSaaS.Features.Customers.Commands;
 
@@ -19,7 +20,7 @@ public record CreateCustomerCommand(
     string PostalCode,
     decimal CreditLimit,
     bool AllowCredit
-) : IRequest<Guid>;
+) : IRequest<Guid>, ITenantScopedRequest;
 
 public class CreateCustomerCommandHandler : IRequestHandler<CreateCustomerCommand, Guid>
 {

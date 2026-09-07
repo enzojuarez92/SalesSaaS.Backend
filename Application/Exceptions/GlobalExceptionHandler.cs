@@ -35,6 +35,16 @@ public sealed class GlobalExceptionHandler(
                 "Conflicto al guardar los datos.",
                 "Los datos ya existen o fueron modificados por otra operación.",
                 new Dictionary<string, object?>()),
+            ForbiddenAccessException forbiddenAccessException => (
+                StatusCodes.Status403Forbidden,
+                "No tenés permiso para realizar esta operación.",
+                forbiddenAccessException.Message,
+                new Dictionary<string, object?>()),
+            UnauthorizedAccessException unauthorizedAccessException => (
+                StatusCodes.Status401Unauthorized,
+                "Autenticación requerida.",
+                unauthorizedAccessException.Message,
+                new Dictionary<string, object?>()),
             InvalidOperationException invalidOperationException => (
                 StatusCodes.Status400BadRequest,
                 "No se pudo completar la operación.",

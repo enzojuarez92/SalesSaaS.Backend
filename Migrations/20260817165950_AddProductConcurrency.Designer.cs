@@ -281,7 +281,7 @@ namespace SalesSaaS.Migrations
                     b.HasOne("SalesSaaS.Domain.Product", "Product")
                         .WithMany()
                         .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Order");

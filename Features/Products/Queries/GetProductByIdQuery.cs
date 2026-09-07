@@ -1,10 +1,11 @@
 ﻿using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Infrastructure;
+using SalesSaaS.Application.Security;
 
 namespace SalesSaaS.Features.Products.Queries;
 
-public record GetProductByIdQuery(Guid ProductId, Guid TenantId) : IRequest<ProductDto?>;
+public record GetProductByIdQuery(Guid ProductId, Guid TenantId) : IRequest<ProductDto?>, ITenantScopedRequest;
 
 public class GetProductByIdQueryHandler : IRequestHandler<GetProductByIdQuery, ProductDto?>
 {
@@ -24,6 +25,8 @@ public class GetProductByIdQueryHandler : IRequestHandler<GetProductByIdQuery, P
                 p.Id,
                 p.Sku,
                 p.Name,
+                p.CategoryId,
+                p.BrandId,
                 p.Description,
                 p.Price,
                 p.Cost,

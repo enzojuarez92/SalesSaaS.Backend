@@ -12,6 +12,8 @@ using SalesSaaS.Application.Security;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
 using SalesSaaS.Infrastructure.Security;
+using SalesSaaS.Infrastructure.Afip;
+using SalesSaaS.Application.Afip;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,9 +30,14 @@ if (string.IsNullOrWhiteSpace(jwtOptions.Key) || jwtOptions.Key.Length < 32)
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<RefreshTokenOptions>(builder.Configuration.GetSection(RefreshTokenOptions.SectionName));
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddDataProtection();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient("Afip", client => client.Timeout = TimeSpan.FromSeconds(45));
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
+builder.Services.AddScoped<IFiscalProfileSecretProtector, FiscalProfileSecretProtector>();
+builder.Services.AddScoped<IAfipService, AfipService>();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

@@ -11,6 +11,13 @@ public sealed class Invoice
     public decimal TotalAmount { get; set; }
     public DateTime IssuedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? DueAtUtc { get; set; }
+    public string? Cae { get; set; }
+    public DateOnly? CaeExpirationDate { get; set; }
+    public string? AfipResult { get; set; }
+    public string? BarCode { get; set; }
+    public string? AfipErrors { get; set; }
+    public AfipVoucherType? AfipVoucherType { get; set; }
+    public int? AfipSalesPoint { get; set; }
     public Order? Order { get; set; }
     public Customer? Customer { get; set; }
 }

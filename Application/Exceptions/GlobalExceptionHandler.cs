@@ -74,6 +74,7 @@ public sealed class GlobalExceptionHandler(
         {
             problem.Extensions[key] = value;
         }
+        problem.Extensions["message"] = detail;
 
         httpContext.Response.StatusCode = statusCode;
         await httpContext.Response.WriteAsJsonAsync(problem, cancellationToken);

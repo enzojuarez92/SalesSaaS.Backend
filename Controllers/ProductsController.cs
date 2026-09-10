@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using SalesSaaS.Features.Products.Commands;
 using SalesSaaS.Features.Products.Queries;
 using SalesSaaS.Domain;
+using SalesSaaS.Features.Inventory.Stock;
 
 namespace SalesSaaS.Controllers;
 
@@ -25,6 +26,8 @@ public class ProductsController : ControllerBase
         [FromQuery] Guid tenantId,
         [FromQuery] string? searchTerm = null,
         [FromQuery] bool? isActive = true,
+        [FromQuery] Guid? categoryId = null,
+        [FromQuery] string? stockStatus = null,
         [FromQuery] int pageNumber = 1,
         [FromQuery] int pageSize = 10)
     {
@@ -35,7 +38,7 @@ public class ProductsController : ControllerBase
 
         try
         {
-            var query = new GetProductsQuery(tenantId, searchTerm, isActive, pageNumber, pageSize);
+            var query = new GetProductsQuery(tenantId, searchTerm, isActive, categoryId, stockStatus, pageNumber, pageSize);
             var products = await _mediator.Send(query);
             return Ok(products);
         }
@@ -47,6 +50,16 @@ public class ProductsController : ControllerBase
         {
             return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
         }
+    }
+
+    [HttpPost("{productId:guid}/stock-adjustment")]
+    [Authorize(Roles = Roles.Inventory)]
+    public async Task<IActionResult> AdjustStock(Guid productId, [FromBody] RecordStockMovementCommand command)
+    {
+        if (productId != command.ProductId) return BadRequest("El ID del producto no coincide.");
+        if (command.Type is not (StockMovementType.AdjustmentIncrease or StockMovementType.AdjustmentDecrease))
+            return BadRequest("Sólo se permiten ajustes manuales de entrada o salida.");
+        return Created($"/api/products/{productId}/stock-adjustment/{await _mediator.Send(command)}", null);
     }
 
     // 🚀 GET: api/products/GUID_DEL_PRODUCTO?tenantId=GUID_DEL_TENANT

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using SalesSaaS.Features.Customers.Commands;
 using SalesSaaS.Features.Customers.Queries; // 👈 Asegurate de tener este using
 using SalesSaaS.Domain;
+using SalesSaaS.Features.Customers;
 
 namespace SalesSaaS.Controllers;
 
@@ -55,6 +56,18 @@ public class CustomersController : ControllerBase
             return NotFound();
         }
         return Ok(customer);
+    }
+
+    [HttpGet("{id:guid}/statement")]
+    [Authorize(Roles = Roles.Sales)]
+    public async Task<CustomerStatementDto> GetStatement(Guid id, [FromQuery] Guid tenantId) => await _mediator.Send(new GetCustomerStatementQuery(tenantId, id));
+
+    [HttpPost("{id:guid}/payments")]
+    [Authorize(Roles = Roles.Sales)]
+    public async Task<IActionResult> RecordPayment(Guid id, [FromBody] RecordCustomerPaymentCommand command)
+    {
+        if (id != command.CustomerId) return BadRequest("El ID del cliente no coincide con la ruta.");
+        return Created($"/api/customers/{id}/payments/{await _mediator.Send(command)}", null);
     }
 
     // POST: api/customers

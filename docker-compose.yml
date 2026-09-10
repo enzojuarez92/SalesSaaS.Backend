@@ -1,16 +1,51 @@
-version: '3.8'
-
 services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: SalesSaaS_SQL_Server
     environment:
-      - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:?Definí MSSQL_SA_PASSWORD en tu archivo .env}
-    ports:
-      - "1433:1433"
+      ACCEPT_EULA: Y
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Definí MSSQL_SA_PASSWORD en .env}
     volumes:
       - sqlserver_data:/var/opt/mssql
+    ports:
+      - "${SQLSERVER_PORT:-1433}:1433"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      Database__MigrateOnStartup: "true"
+      ConnectionStrings__DefaultConnection: Server=sqlserver,1433;Database=SalesSaaS;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False
+      Jwt__Key: ${Jwt__Key:?Definí Jwt__Key en .env}
+      Jwt__Issuer: ${Jwt__Issuer:-SalesSaaS}
+      Jwt__Audience: ${Jwt__Audience:-SalesSaaS.Client}
+      MercadoPago__AccessToken: ${MERCADOPAGO_ACCESS_TOKEN:-}
+      MercadoPago__NotificationUrl: ${MERCADOPAGO_NOTIFICATION_URL:-}
+      MercadoPago__SuccessUrl: ${MERCADOPAGO_SUCCESS_URL:-}
+      MercadoPago__FailureUrl: ${MERCADOPAGO_FAILURE_URL:-}
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    expose:
+      - "8080"
+
+  frontend:
+    build:
+      context: ../SalesSaaS.Frontend
+      dockerfile: Dockerfile
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
 
 volumes:
   sqlserver_data:

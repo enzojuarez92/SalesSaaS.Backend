@@ -24,6 +24,7 @@ public class Customer
 
     // 💼 Datos Comerciales
     public decimal CreditLimit { get; set; } = 0;
+    public decimal CurrentBalance { get; set; } = 0;
     public bool AllowCredit { get; set; } = false;
 
     // ⚙️ Estado y Auditoría

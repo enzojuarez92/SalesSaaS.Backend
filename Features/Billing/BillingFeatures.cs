@@ -15,13 +15,13 @@ public sealed record GetTenantSubscriptionQuery(Guid TenantId) : IRequest<Tenant
 public sealed record ProcessPaymentWebhookCommand(string Provider, string Payload, string? Signature) : IRequest;
 public sealed record SubscriptionPlanDto(Guid Id, string Name, decimal MonthlyPrice, decimal AnnualPrice, string Currency, int MaxUsers, int MaxWarehouses, int MaxInvoicesPerMonth, bool SupportsAfip, bool IsDefault);
 public sealed record TenantSubscriptionDto(Guid Id, Guid SubscriptionPlanId, string PlanName, SubscriptionStatus Status, DateTime StartsAtUtc, DateTime ExpiresAtUtc, bool AutoRenew, string? ProviderSubscriptionId);
-public sealed record SubscriptionCheckoutDto(Guid SubscriptionId, Guid SaaSInvoiceId, string CheckoutUrl, string ExternalReference);
+public sealed record SubscriptionCheckoutDto(Guid SubscriptionId, Guid SaaSInvoiceId, string CheckoutUrl, string ExternalReference, bool IsSimulated);
 
 public sealed class CreateSubscriptionPlanCommandValidator : AbstractValidator<CreateSubscriptionPlanCommand>
 {
     public CreateSubscriptionPlanCommandValidator()
     {
-        RuleFor(command => command.Name).NotEmpty().MaximumLength(100).WithMessage("El nombre del plan es obligatorio y no puede superar los 100 caracteres.");
+        RuleFor(command => command.Name).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(100).WithMessage("El nombre del plan es obligatorio y no puede superar los 100 caracteres.");
         RuleFor(command => command.MonthlyPrice).GreaterThanOrEqualTo(0).WithMessage("El precio mensual no puede ser negativo.");
         RuleFor(command => command.AnnualPrice).GreaterThanOrEqualTo(0).WithMessage("El precio anual no puede ser negativo.");
         RuleFor(command => command.Currency).Length(3).WithMessage("La moneda debe tener tres caracteres.");
@@ -36,7 +36,7 @@ public sealed class SubscribeTenantCommandValidator : AbstractValidator<Subscrib
     {
         RuleFor(command => command.TenantId).NotEmpty().WithMessage("El negocio es obligatorio.");
         RuleFor(command => command.SubscriptionPlanId).NotEmpty().WithMessage("El plan es obligatorio.");
-        RuleFor(command => command.PaymentProvider).NotEmpty().MaximumLength(50).WithMessage("La pasarela de pago es obligatoria.");
+        RuleFor(command => command.PaymentProvider).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(50).WithMessage("La pasarela de pago es obligatoria.");
     }
 }
 
@@ -70,9 +70,15 @@ public sealed class SubscribeTenantCommandHandler(ApplicationDbContext context, 
         invoice.ExternalReference = checkout.ExternalReference;
         invoice.CheckoutUrl = checkout.CheckoutUrl;
         subscription.ProviderSubscriptionId = checkout.ProviderSubscriptionId;
+        if (checkout.IsSimulated)
+        {
+            subscription.Status = SubscriptionStatus.Active;
+            invoice.Status = SaaSInvoiceStatus.Paid;
+            invoice.PaidAtUtc = now;
+        }
         context.AddRange(subscription, invoice);
         await context.SaveChangesAsync(cancellationToken);
-        return new SubscriptionCheckoutDto(subscription.Id, invoice.Id, checkout.CheckoutUrl, checkout.ExternalReference);
+        return new SubscriptionCheckoutDto(subscription.Id, invoice.Id, checkout.CheckoutUrl, checkout.ExternalReference, checkout.IsSimulated);
     }
 }
 public sealed class GetTenantSubscriptionQueryHandler(ApplicationDbContext context) : IRequestHandler<GetTenantSubscriptionQuery, TenantSubscriptionDto?>

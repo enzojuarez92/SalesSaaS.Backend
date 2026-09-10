@@ -9,7 +9,7 @@ public sealed class DevelopmentPaymentGatewayService : IPaymentGatewayService
     {
         var externalReference = $"saas-{request.SaaSInvoiceId:N}";
         var checkoutUrl = $"https://checkout.example.invalid/{request.Provider.ToLowerInvariant()}/{externalReference}";
-        return Task.FromResult(new PaymentCheckoutResult(request.Provider, externalReference, checkoutUrl, null));
+        return Task.FromResult(new PaymentCheckoutResult(request.Provider, externalReference, checkoutUrl, null, true));
     }
 
     public Task<PaymentWebhookResult> ProcessWebhookAsync(string provider, string payload, string? signature, CancellationToken cancellationToken)

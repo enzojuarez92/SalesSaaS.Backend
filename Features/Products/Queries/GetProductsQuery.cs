@@ -10,6 +10,8 @@ public record GetProductsQuery(
     Guid TenantId,
     string? SearchTerm = null,
     bool? IsActive = true,
+    Guid? CategoryId = null,
+    string? StockStatus = null,
     int PageNumber = 1,
     int PageSize = 10
 ) : IRequest<PagedResult<ProductDto>>, ITenantScopedRequest;
@@ -48,6 +50,19 @@ public class GetProductsQueryHandler : IRequestHandler<GetProductsQuery, PagedRe
         if (request.IsActive.HasValue)
         {
             query = query.Where(p => p.IsActive == request.IsActive.Value);
+        }
+        if (request.CategoryId.HasValue)
+            query = query.Where(product => product.CategoryId == request.CategoryId);
+        if (!string.IsNullOrWhiteSpace(request.StockStatus))
+        {
+            var status = request.StockStatus.Trim().ToLowerInvariant();
+            query = status switch
+            {
+                "low" => query.Where(product => product.Stock <= product.MinimumStockAlert),
+                "available" => query.Where(product => product.Stock > product.MinimumStockAlert),
+                "out" => query.Where(product => product.Stock == 0),
+                _ => throw new InvalidOperationException("El estado de stock no es válido.")
+            };
         }
 
         // 3. Buscador por Código SKU o Nombre

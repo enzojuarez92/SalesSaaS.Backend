@@ -15,5 +15,6 @@ public class CustomerConfiguration : IEntityTypeConfiguration<Customer>
         builder.Property(c => c.DocumentNumber).IsRequired().HasMaxLength(15);
         builder.Property(c => c.TaxCondition).IsRequired().HasMaxLength(50);
         builder.Property(c => c.CreditLimit).HasPrecision(18, 2);
+        builder.Property(c => c.CurrentBalance).HasPrecision(18, 2);
     }
 }

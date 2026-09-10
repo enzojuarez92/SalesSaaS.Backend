@@ -23,12 +23,26 @@ using SalesSaaS.Infrastructure.Notifications;
 using SalesSaaS.Infrastructure.Health;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Data.SqlClient;
+using QuestPDF.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+QuestPDF.Settings.License = LicenseType.Community;
 
-// 1. Conectamos nuestro DbContext con la cadena de conexión
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+// 1. Conectamos el DbContext. SQL Server local en Docker usa un certificado
+// autogenerado, por lo que Development debe confiar explícitamente en él.
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Configurá ConnectionStrings:DefaultConnection.");
+if (builder.Environment.IsDevelopment())
+{
+    var sqlConnection = new SqlConnectionStringBuilder(connectionString)
+    {
+        Encrypt = false,
+        TrustServerCertificate = true
+    };
+    connectionString = sqlConnection.ConnectionString;
+}
+builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
 
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
 if (string.IsNullOrWhiteSpace(jwtOptions.Key) || jwtOptions.Key.Length < 32)
@@ -42,6 +56,12 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddDataProtection();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("Afip", client => client.Timeout = TimeSpan.FromSeconds(45));
+builder.Services.Configure<MercadoPagoOptions>(builder.Configuration.GetSection(MercadoPagoOptions.SectionName));
+builder.Services.AddHttpClient<IPaymentGatewayService, MercadoPagoService>(client =>
+{
+    client.BaseAddress = new Uri("https://api.mercadopago.com/");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"])
     .AddCheck<AfipHealthCheck>("afip", tags: ["ready", "external"])
@@ -58,7 +78,6 @@ builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 builder.Services.AddScoped<IFiscalProfileSecretProtector, FiscalProfileSecretProtector>();
 builder.Services.AddScoped<IAfipService, AfipService>();
 builder.Services.AddSingleton<IReportExportService, ReportExportService>();
-builder.Services.AddScoped<IPaymentGatewayService, DevelopmentPaymentGatewayService>();
 builder.Services.AddScoped<ISubscriptionGatekeeper, SubscriptionGatekeeper>();
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
 builder.Services.AddScoped<IEmailService, MailKitEmailService>();
@@ -132,10 +151,12 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    if (app.Environment.IsDevelopment())
+    if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     {
         await context.Database.MigrateAsync();
     }
+    await DefaultWarehouseSeeder.EnsureActiveWarehouseForEveryTenantAsync(context);
+    await SubscriptionPlanSeeder.EnsurePlansAsync(context);
 }
 
 app.Run();

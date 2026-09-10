@@ -1,34 +1,24 @@
-﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using SalesSaaS.Domain;
-using SalesSaaS.Features.Tenants.Commands;
+using Microsoft.EntityFrameworkCore;
+using SalesSaaS.Application.Security;
+using SalesSaaS.Infrastructure;
 
 namespace SalesSaaS.Controllers;
 
+public sealed record ActiveTenantDto(Guid Id, string Name);
+
 [ApiController]
-[Route("api/[controller]")]
-public class TenantsController : ControllerBase
+[Route("api/tenants")]
+[Authorize]
+public sealed class TenantsController(ApplicationDbContext context, ICurrentUser currentUser) : ControllerBase
 {
-    private readonly IMediator _mediator;
-
-    public TenantsController(IMediator mediator)
+    [HttpGet("current")]
+    public async Task<ActionResult<ActiveTenantDto>> Current(CancellationToken cancellationToken)
     {
-        _mediator = mediator;
-    }
-
-    // 🚀 POST: api/tenants
-    [HttpPost]
-    [Authorize(Roles = Roles.Owner)]
-    public async Task<IActionResult> Create([FromBody] CreateTenantCommand command)
-    {
-        if (command == null)
-        {
-            return BadRequest("Los datos del negocio no pueden ser nulos.");
-        }
-
-        var tenantId = await _mediator.Send(command);
-
-        return Created($"/api/tenants/{tenantId}", new { id = tenantId });
+        if (!currentUser.TenantId.HasValue) return Unauthorized();
+        var tenant = await context.Tenants.AsNoTracking().Where(item => item.Id == currentUser.TenantId.Value)
+            .Select(item => new ActiveTenantDto(item.Id, item.Name)).SingleOrDefaultAsync(cancellationToken);
+        return tenant is null ? NotFound() : Ok(tenant);
     }
 }

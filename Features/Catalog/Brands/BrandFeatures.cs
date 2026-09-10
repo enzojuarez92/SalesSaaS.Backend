@@ -16,7 +16,7 @@ public sealed class CreateBrandCommandValidator : AbstractValidator<CreateBrandC
     public CreateBrandCommandValidator()
     {
         RuleFor(command => command.TenantId).NotEmpty().WithMessage("El negocio es obligatorio.");
-        RuleFor(command => command.Name).NotEmpty().MaximumLength(100).WithMessage("El nombre de la marca es obligatorio y no puede superar los 100 caracteres.");
+        RuleFor(command => command.Name).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(100).WithMessage("El nombre de la marca es obligatorio y no puede superar los 100 caracteres.");
     }
 }
 

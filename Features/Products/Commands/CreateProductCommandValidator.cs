@@ -7,8 +7,8 @@ public sealed class CreateProductCommandValidator : AbstractValidator<CreateProd
     public CreateProductCommandValidator()
     {
         RuleFor(command => command.TenantId).NotEmpty().WithMessage("El TenantId es obligatorio.");
-        RuleFor(command => command.Sku).NotEmpty().MaximumLength(50);
-        RuleFor(command => command.Name).NotEmpty().MaximumLength(150);
+        RuleFor(command => command.Sku).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(50).WithMessage("El SKU es obligatorio y no puede superar los 50 caracteres.");
+        RuleFor(command => command.Name).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(150).WithMessage("El nombre del producto es obligatorio y no puede superar los 150 caracteres.");
         RuleFor(command => command.Description).MaximumLength(500);
         RuleFor(command => command.Price).GreaterThanOrEqualTo(0);
         RuleFor(command => command.Cost).GreaterThanOrEqualTo(0);

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Security;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
+using SalesSaaS.Application.Validation;
 
 namespace SalesSaaS.Features.Purchases;
 
@@ -22,8 +23,8 @@ public sealed class CreateSupplierCommandValidator : AbstractValidator<CreateSup
     public CreateSupplierCommandValidator()
     {
         RuleFor(command => command.TenantId).NotEmpty().WithMessage("El negocio es obligatorio.");
-        RuleFor(command => command.LegalName).NotEmpty().MaximumLength(150).WithMessage("La razón social es obligatoria y no puede superar los 150 caracteres.");
-        RuleFor(command => command.TaxId).NotEmpty().MaximumLength(20).WithMessage("El CUIT es obligatorio y no puede superar los 20 caracteres.");
+        RuleFor(command => command.LegalName).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(150).WithMessage("La razón social es obligatoria y no puede superar los 150 caracteres.");
+        RuleFor(command => command.TaxId).Must(ArgentineTaxId.IsValid).WithMessage("El CUIT debe contener exactamente 11 dígitos numéricos y ser válido.");
         RuleFor(command => command.TaxCondition).NotEmpty().MaximumLength(80).WithMessage("La condición frente al IVA es obligatoria.");
         RuleFor(command => command.Email).EmailAddress().When(command => !string.IsNullOrWhiteSpace(command.Email)).WithMessage("El correo electrónico no tiene un formato válido.");
     }

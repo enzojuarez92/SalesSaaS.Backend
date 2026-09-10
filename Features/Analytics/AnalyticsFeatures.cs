@@ -12,6 +12,8 @@ public sealed record GetTopSellingProductsQuery(Guid TenantId, int Days = 30, in
 public sealed record GetProductsWithoutMovementQuery(Guid TenantId) : IRequest<IReadOnlyList<ProductWithoutMovementDto>>, ITenantScopedRequest;
 public sealed record GetLowStockProductsQuery(Guid TenantId) : IRequest<IReadOnlyList<LowStockProductDto>>, ITenantScopedRequest;
 public sealed record GetInventoryValuationQuery(Guid TenantId) : IRequest<IReadOnlyList<WarehouseInventoryValuationDto>>, ITenantScopedRequest;
+public sealed record GetDashboardSummaryQuery(Guid TenantId) : IRequest<DashboardSummaryDto>, ITenantScopedRequest;
+public sealed record GetDashboardSalesChartQuery(Guid TenantId, int Days = 30) : IRequest<IReadOnlyList<DashboardSalesChartPointDto>>, ITenantScopedRequest;
 
 public sealed record PeriodMetricDto(decimal Current, decimal Previous, decimal VariationPercentage);
 public sealed record DashboardKpisDto(PeriodMetricDto DailySales, PeriodMetricDto MonthlySales, decimal EstimatedGrossProfit, decimal EstimatedGrossMarginPercentage, int ProcessedOrders, decimal AverageTicket, decimal TotalReceivable, decimal TotalPayable);
@@ -19,6 +21,10 @@ public sealed record TopSellingProductDto(Guid ProductId, string Sku, string Nam
 public sealed record ProductWithoutMovementDto(Guid ProductId, string Sku, string Name, int Stock);
 public sealed record LowStockProductDto(Guid ProductId, string Sku, string Name, int CurrentStock, int MinimumStockAlert);
 public sealed record WarehouseInventoryValuationDto(Guid WarehouseId, string WarehouseName, int Units, decimal Valuation);
+public sealed record DashboardCashDto(Guid Id, string WarehouseName, decimal ExpectedCash, DateTime OpenedAtUtc);
+public sealed record RecentSaleDto(Guid Id, string CustomerName, decimal TotalAmount, string Status, DateTime OccurredAtUtc, PaymentMethod PaymentMethod);
+public sealed record DashboardSummaryDto(decimal DailySales, int DailyTransactions, decimal MonthlySales, int MonthlyTransactions, decimal TotalReceivable, int CriticalStockCount, DashboardCashDto? CurrentCash, IReadOnlyList<RecentSaleDto> RecentSales);
+public sealed record DashboardSalesChartPointDto(DateOnly Date, decimal Total, int Transactions);
 
 public sealed class GetDashboardKpisQueryValidator : AbstractValidator<GetDashboardKpisQuery>
 {
@@ -100,4 +106,43 @@ public sealed class GetInventoryValuationQueryHandler(ApplicationDbContext conte
             .GroupBy(movement => new { movement.WarehouseId, movement.Warehouse!.Name })
             .Select(group => new WarehouseInventoryValuationDto(group.Key.WarehouseId, group.Key.Name, group.Sum(movement => movement.Quantity), group.Sum(movement => movement.Quantity * movement.Product!.Cost)))
             .OrderBy(item => item.WarehouseName).ToListAsync(cancellationToken);
+}
+
+public sealed class GetDashboardSummaryQueryHandler(ApplicationDbContext context, ISender sender) : IRequestHandler<GetDashboardSummaryQuery, DashboardSummaryDto>
+{
+    public async Task<DashboardSummaryDto> Handle(GetDashboardSummaryQuery request, CancellationToken cancellationToken)
+    {
+        var kpis = await sender.Send(new GetDashboardKpisQuery(request.TenantId), cancellationToken);
+        var today = DateTime.UtcNow.Date;
+        var dailyTransactions = await context.Orders.AsNoTracking().CountAsync(order => order.TenantId == request.TenantId && order.Status != "Cancelled" && order.OrderDate >= today && order.OrderDate < today.AddDays(1), cancellationToken);
+        var criticalStock = await context.Products.AsNoTracking().CountAsync(product => product.TenantId == request.TenantId && product.IsActive && product.Stock <= product.MinimumStockAlert, cancellationToken);
+        var cashSession = await context.CashRegisterSessions.AsNoTracking().Where(session => session.TenantId == request.TenantId && session.Status == "Open").OrderByDescending(session => session.OpenedAtUtc).FirstOrDefaultAsync(cancellationToken);
+        DashboardCashDto? cash = null;
+        if (cashSession is not null)
+        {
+            var cashNet = await context.CashMovements.AsNoTracking().Where(movement => movement.CashRegisterSessionId == cashSession.Id && movement.PaymentMethod == PaymentMethod.Cash).SumAsync(movement => (decimal?)(movement.IsIncome ? movement.Amount : -movement.Amount), cancellationToken) ?? 0;
+            var warehouseName = await context.Warehouses.AsNoTracking().Where(warehouse => warehouse.Id == cashSession.WarehouseId).Select(warehouse => warehouse.Name).SingleOrDefaultAsync(cancellationToken) ?? "Depósito";
+            cash = new DashboardCashDto(cashSession.Id, warehouseName, cashSession.OpeningBalance + cashNet, cashSession.OpenedAtUtc);
+        }
+        var recentSales = await context.Orders.AsNoTracking().Where(order => order.TenantId == request.TenantId).OrderByDescending(order => order.OrderDate).Take(6)
+            .Select(order => new RecentSaleDto(order.Id, order.Customer!.Name, order.TotalAmount, order.Status, order.OrderDate, order.PaymentMethod)).ToListAsync(cancellationToken);
+        return new DashboardSummaryDto(kpis.DailySales.Current, dailyTransactions, kpis.MonthlySales.Current, kpis.ProcessedOrders, Math.Max(0, kpis.TotalReceivable), criticalStock, cash, recentSales);
+    }
+}
+
+public sealed class GetDashboardSalesChartQueryHandler(ApplicationDbContext context) : IRequestHandler<GetDashboardSalesChartQuery, IReadOnlyList<DashboardSalesChartPointDto>>
+{
+    public async Task<IReadOnlyList<DashboardSalesChartPointDto>> Handle(GetDashboardSalesChartQuery request, CancellationToken cancellationToken)
+    {
+        var days = Math.Clamp(request.Days, 1, 90);
+        var start = DateTime.UtcNow.Date.AddDays(-(days - 1));
+        var totals = await context.Orders.AsNoTracking().Where(order => order.TenantId == request.TenantId && order.Status != "Cancelled" && order.OrderDate >= start)
+            .GroupBy(order => order.OrderDate.Date).Select(group => new { Date = group.Key, Total = group.Sum(order => order.TotalAmount), Transactions = group.Count() }).ToListAsync(cancellationToken);
+        var byDate = totals.ToDictionary(item => DateOnly.FromDateTime(item.Date));
+        return Enumerable.Range(0, days).Select(offset =>
+        {
+            var date = DateOnly.FromDateTime(start.AddDays(offset));
+            return byDate.TryGetValue(date, out var item) ? new DashboardSalesChartPointDto(date, item.Total, item.Transactions) : new DashboardSalesChartPointDto(date, 0, 0);
+        }).ToList();
+    }
 }

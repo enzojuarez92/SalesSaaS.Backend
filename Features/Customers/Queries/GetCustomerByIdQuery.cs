@@ -32,6 +32,7 @@ namespace SalesSaaS.Features.Customers.Queries
                         c.State,
                         c.PostalCode,
                         c.CreditLimit,
+                        c.CurrentBalance,
                         c.AllowCredit,
                         c.IsActive
                     ))

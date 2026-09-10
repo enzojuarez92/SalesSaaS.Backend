@@ -1,0 +1,8 @@
+.git
+.vs
+bin
+obj
+output
+tmp
+.env
+appsettings.Development.json

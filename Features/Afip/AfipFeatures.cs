@@ -11,6 +11,7 @@ using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
 using SalesSaaS.Infrastructure.Afip;
 using SalesSaaS.Features.Notifications;
+using SalesSaaS.Application.Validation;
 
 namespace SalesSaaS.Features.Afip;
 
@@ -26,11 +27,11 @@ public sealed class ConfigureTenantFiscalProfileCommandValidator : AbstractValid
     public ConfigureTenantFiscalProfileCommandValidator()
     {
         RuleFor(command => command.TenantId).NotEmpty().WithMessage("El negocio es obligatorio.");
-        RuleFor(command => command.IssuerTaxId).NotEmpty().MaximumLength(20).WithMessage("El CUIT emisor es obligatorio.");
+        RuleFor(command => command.IssuerTaxId).Must(ArgentineTaxId.IsValid).WithMessage("El CUIT emisor debe contener exactamente 11 dígitos numéricos y ser válido.");
         RuleFor(command => command.CertificateContent).NotEmpty().WithMessage("El certificado fiscal es obligatorio.");
         RuleFor(command => command.CertificateContent).Must(BeBase64).When(command => command.IsPfxCertificate).WithMessage("El certificado PFX debe enviarse codificado en Base64.");
         RuleFor(command => command.PrivateKeyContent).NotEmpty().When(command => !command.IsPfxCertificate).WithMessage("La clave privada es obligatoria para certificados PEM.");
-        RuleFor(command => command.CertificateAlias).NotEmpty().MaximumLength(100).WithMessage("El alias del certificado es obligatorio.");
+        RuleFor(command => command.CertificateAlias).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(100).WithMessage("El alias del certificado es obligatorio y no puede superar los 100 caracteres.");
         RuleFor(command => command.SalesPoint).GreaterThan(0).WithMessage("El punto de venta debe ser mayor a cero.");
     }
 
@@ -90,7 +91,7 @@ public sealed class ConfigureTenantFiscalProfileCommandHandler(ApplicationDbCont
         return profile.Id;
     }
 
-    private static string NormalizeTaxId(string value) => new(value.Where(char.IsDigit).ToArray());
+    private static string NormalizeTaxId(string value) => value.Trim();
 }
 
 public sealed class GetTenantFiscalProfileQueryHandler(ApplicationDbContext context) : IRequestHandler<GetTenantFiscalProfileQuery, TenantFiscalProfileDto?>
@@ -107,7 +108,7 @@ public sealed class AuthorizeInvoiceCommandHandler(ApplicationDbContext context,
         await subscriptionGatekeeper.EnsureAfipIsAvailableAsync(request.TenantId, cancellationToken);
         var invoice = await context.Invoices.SingleOrDefaultAsync(item => item.Id == request.InvoiceId && item.TenantId == request.TenantId, cancellationToken)
             ?? throw new InvalidOperationException("La factura no existe.");
-        if (invoice.Status != "Issued") throw new InvalidOperationException("Sólo se pueden autorizar facturas emitidas.");
+        if (invoice.Status is not ("Issued" or "Pending")) throw new InvalidOperationException("Sólo se pueden autorizar comprobantes pendientes o emitidos.");
         if (!string.IsNullOrWhiteSpace(invoice.Cae)) throw new InvalidOperationException("La factura ya posee un CAE autorizado.");
         var profile = await context.TenantFiscalProfiles.SingleOrDefaultAsync(item => item.TenantId == request.TenantId && item.IsActive, cancellationToken)
             ?? throw new InvalidOperationException("No existe una configuración fiscal activa para este negocio.");
@@ -126,6 +127,7 @@ public sealed class AuthorizeInvoiceCommandHandler(ApplicationDbContext context,
             invoice.AfipVoucherType = request.VoucherType;
             invoice.AfipSalesPoint = profile.SalesPoint;
             invoice.AfipResult = authorization.IsApproved ? "Approved" : "Rejected";
+            invoice.Status = authorization.IsApproved ? "Issued" : "Rejected";
             invoice.Cae = authorization.Cae;
             invoice.CaeExpirationDate = authorization.CaeExpirationDate;
             invoice.AfipErrors = authorization.Errors;
@@ -137,7 +139,8 @@ public sealed class AuthorizeInvoiceCommandHandler(ApplicationDbContext context,
         catch (Exception exception)
         {
             logger.LogError(exception, "AFIP authorization failed for invoice {InvoiceId} and tenant {TenantId}", invoice.Id, request.TenantId);
-            invoice.AfipResult = "Error";
+            invoice.AfipResult = "Rejected";
+            invoice.Status = "Rejected";
             invoice.AfipErrors = exception.Message.Length > 4000 ? exception.Message[..4000] : exception.Message;
             await context.SaveChangesAsync(cancellationToken);
             throw;

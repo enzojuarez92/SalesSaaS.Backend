@@ -24,8 +24,8 @@ public sealed class CreateTenantMemberCommandValidator : AbstractValidator<Creat
     public CreateTenantMemberCommandValidator()
     {
         RuleFor(command => command.TenantId).NotEmpty();
-        RuleFor(command => command.FirstName).NotEmpty().MaximumLength(100);
-        RuleFor(command => command.LastName).NotEmpty().MaximumLength(100);
+        RuleFor(command => command.FirstName).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(100);
+        RuleFor(command => command.LastName).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(100);
         RuleFor(command => command.Email).NotEmpty().EmailAddress().MaximumLength(256);
         RuleFor(command => command.Password).MinimumLength(12);
         RuleFor(command => command.Role).Must(AssignableRoles.Contains)

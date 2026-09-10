@@ -27,6 +27,7 @@ public record CustomerDto(
     string State,
     string PostalCode,
     decimal CreditLimit,
+    decimal CurrentBalance,
     bool AllowCredit,
     bool IsActive
 );
@@ -86,6 +87,7 @@ public class GetCustomersQueryHandler : IRequestHandler<GetCustomersQuery, Paged
                 c.State,
                 c.PostalCode,
                 c.CreditLimit,
+                c.CurrentBalance,
                 c.AllowCredit,
                 c.IsActive
             ))

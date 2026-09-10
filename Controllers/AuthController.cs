@@ -21,6 +21,14 @@ public sealed class AuthController(IMediator mediator) : ControllerBase
         return Created(string.Empty, response);
     }
 
+    [HttpPost("register-tenant")]
+    [ProducesResponseType<AuthResponse>(StatusCodes.Status201Created)]
+    public async Task<IActionResult> RegisterTenant(RegisterTenantCommand command)
+    {
+        var response = await mediator.Send(command);
+        return Created(string.Empty, response);
+    }
+
     [HttpPost("login")]
     [ProducesResponseType<AuthResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<AuthResponse>> Login(LoginCommand command) =>

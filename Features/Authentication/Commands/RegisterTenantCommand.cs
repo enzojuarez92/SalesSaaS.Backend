@@ -6,6 +6,7 @@ using SalesSaaS.Application.Security;
 using SalesSaaS.Domain;
 using SalesSaaS.Infrastructure;
 using SalesSaaS.Features.Notifications;
+using SalesSaaS.Application.Validation;
 
 namespace SalesSaaS.Features.Authentication.Commands;
 
@@ -15,21 +16,25 @@ public record RegisterTenantCommand(
     string FirstName,
     string LastName,
     string Email,
-    string Password) : IRequest<AuthResponse>;
+    string Password,
+    string? TaxCondition = null,
+    string? BusinessCategory = null) : IRequest<AuthResponse>;
 
 public sealed class RegisterTenantCommandValidator : AbstractValidator<RegisterTenantCommand>
 {
     public RegisterTenantCommandValidator()
     {
-        RuleFor(command => command.TenantName).NotEmpty().MaximumLength(150);
-        RuleFor(command => command.TaxId).NotEmpty().MaximumLength(20);
-        RuleFor(command => command.FirstName).NotEmpty().MaximumLength(100);
-        RuleFor(command => command.LastName).NotEmpty().MaximumLength(100);
-        RuleFor(command => command.Email).NotEmpty().EmailAddress().MaximumLength(256);
+        RuleFor(command => command.TenantName).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(150).WithMessage("El nombre del negocio es obligatorio y no puede superar los 150 caracteres.");
+        RuleFor(command => command.TaxId).Must(value => string.IsNullOrWhiteSpace(value) || ArgentineTaxId.IsValid(value)).WithMessage("El CUIT debe contener exactamente 11 dígitos numéricos y ser válido.");
+        RuleFor(command => command.FirstName).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(100).WithMessage("El nombre es obligatorio y no puede superar los 100 caracteres.");
+        RuleFor(command => command.LastName).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(100).WithMessage("El apellido es obligatorio y no puede superar los 100 caracteres.");
+        RuleFor(command => command.Email).NotEmpty().EmailAddress().MaximumLength(256).WithMessage("Ingresá un correo electrónico válido.");
         RuleFor(command => command.Password).MinimumLength(12)
             .Matches("[A-Z]").WithMessage("La contraseña debe incluir una mayúscula.")
             .Matches("[a-z]").WithMessage("La contraseña debe incluir una minúscula.")
             .Matches("[0-9]").WithMessage("La contraseña debe incluir un número.");
+        RuleFor(command => command.TaxCondition).MaximumLength(80).When(command => command.TaxCondition is not null);
+        RuleFor(command => command.BusinessCategory).MaximumLength(100).When(command => command.BusinessCategory is not null);
     }
 }
 
@@ -48,7 +53,7 @@ public sealed class RegisterTenantCommandHandler(
             throw new InvalidOperationException("Ya existe un usuario con ese correo electrónico.");
         }
 
-        var tenant = new Tenant { Id = Guid.NewGuid(), Name = request.TenantName.Trim(), TaxId = request.TaxId.Trim() };
+        var tenant = new Tenant { Id = Guid.NewGuid(), Name = request.TenantName.Trim(), TaxId = request.TaxId.Trim(), TaxCondition = request.TaxCondition?.Trim(), BusinessCategory = request.BusinessCategory?.Trim() };
         var user = new User { Id = Guid.NewGuid(), FirstName = request.FirstName.Trim(), LastName = request.LastName.Trim(), Email = email };
         user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
 
@@ -67,8 +72,18 @@ public sealed class RegisterTenantCommandHandler(
             context.SubscriptionPlans.Add(defaultPlan);
         }
         var subscription = new TenantSubscription { Id = Guid.NewGuid(), TenantId = tenant.Id, SubscriptionPlanId = defaultPlan.Id, Status = SubscriptionStatus.Trialing, StartsAtUtc = DateTime.UtcNow, ExpiresAtUtc = DateTime.UtcNow.AddDays(14), AutoRenew = false };
+        var consumerFinal = new Customer
+        {
+            Id = Guid.NewGuid(), TenantId = tenant.Id, Name = "Consumidor Final", LegalName = "Consumidor Final",
+            DocumentType = "DNI", DocumentNumber = "00000000", TaxCondition = "Consumidor Final",
+            IsActive = true, AllowCredit = false
+        };
 
-        context.AddRange(tenant, user, membership, subscription);
+        var mainWarehouse = new Warehouse
+        {
+            Id = Guid.NewGuid(), TenantId = tenant.Id, Code = "MAIN", Name = "Depósito Principal", IsActive = true
+        };
+        context.AddRange(tenant, user, membership, subscription, consumerFinal, mainWarehouse);
         var refreshToken = refreshTokenService.Create(user.Id, tenant.Id);
         context.RefreshTokens.Add(refreshToken.Entity);
         await context.SaveChangesAsync(cancellationToken);

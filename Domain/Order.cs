@@ -20,6 +20,11 @@ public class Order
     [Column(TypeName = "decimal(18,2)")]
     public decimal TotalAmount { get; set; }
 
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal DiscountAmount { get; set; }
+
+    public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
+
     public string Status { get; set; } = "Completed"; // "Completed", "Cancelled", etc.
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

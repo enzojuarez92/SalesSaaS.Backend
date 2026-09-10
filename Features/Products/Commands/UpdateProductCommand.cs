@@ -49,6 +49,8 @@ public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand,
         {
             throw new InvalidOperationException($"El SKU '{request.Sku}' ya está siendo utilizado por otro producto.");
         }
+        if (request.Stock != product.Stock)
+            throw new InvalidOperationException("El stock se modifica desde Ajustar stock para conservar el historial de movimientos.");
 
         if (request.CategoryId.HasValue && !await _context.Categories.AnyAsync(category => category.Id == request.CategoryId && category.TenantId == request.TenantId && category.IsActive, cancellationToken))
             throw new InvalidOperationException("La categoría no existe o no está activa.");

@@ -12,7 +12,9 @@ public record CreateOrderCommand(
     Guid TenantId,
     Guid CustomerId,
     Guid WarehouseId,
-    List<OrderItemRequest> Items
+    List<OrderItemRequest> Items,
+    decimal DiscountAmount = 0,
+    PaymentMethod PaymentMethod = PaymentMethod.Cash
 ) : IRequest<Guid>, ITenantScopedRequest;
 
 public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Guid>
@@ -32,16 +34,25 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
         }
 
         // 1. Validar que el Cliente exista y pertenezca al mismo Tenant
-        var customerExists = await _context.Customers
-            .AnyAsync(c => c.Id == request.CustomerId && c.TenantId == request.TenantId, cancellationToken);
+        var customer = await _context.Customers
+            .SingleOrDefaultAsync(c => c.Id == request.CustomerId && c.TenantId == request.TenantId && c.IsActive, cancellationToken);
 
-        if (!customerExists)
+        if (customer is null)
         {
             throw new InvalidOperationException("El cliente especificado no existe o no pertenece a este Inquilino.");
         }
 
         var warehouseExists = await _context.Warehouses.AnyAsync(warehouse => warehouse.Id == request.WarehouseId && warehouse.TenantId == request.TenantId && warehouse.IsActive, cancellationToken);
         if (!warehouseExists) throw new InvalidOperationException("El depósito no existe o no está activo.");
+
+        // La caja es una condición previa para cualquier venta: se valida antes de
+        // modificar stock, saldo del cliente o persistir la orden.
+        var activeCashSession = await _context.CashRegisterSessions
+            .Where(session => session.TenantId == request.TenantId && session.WarehouseId == request.WarehouseId && session.Status == "Open")
+            .OrderByDescending(session => session.OpenedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (activeCashSession is null)
+            throw new InvalidOperationException("No se puede procesar la venta porque no hay una caja abierta para hoy.");
 
         // 2. Cargar los productos de la BD para verificar precios y stock
         var productIds = request.Items.Select(i => i.ProductId).ToList();
@@ -95,7 +106,29 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
             _context.StockMovements.Add(new StockMovement { Id = Guid.NewGuid(), TenantId = request.TenantId, ProductId = product.Id, WarehouseId = request.WarehouseId, Type = StockMovementType.Issue, Quantity = -itemRequest.Quantity, Reference = order.Id.ToString("N"), Reason = "Venta confirmada" });
         }
 
-        order.TotalAmount = totalAmount;
+        if (request.DiscountAmount > totalAmount)
+        {
+            throw new InvalidOperationException("El descuento no puede superar el subtotal de la venta.");
+        }
+
+        order.DiscountAmount = request.DiscountAmount;
+        order.TotalAmount = totalAmount - request.DiscountAmount;
+        order.PaymentMethod = request.PaymentMethod;
+        if (request.PaymentMethod == PaymentMethod.Account)
+        {
+            if (!customer.AllowCredit)
+                throw new InvalidOperationException("El cliente no tiene cuenta corriente habilitada.");
+            if (customer.CurrentBalance + order.TotalAmount > customer.CreditLimit)
+                throw new InvalidOperationException("La venta supera el crédito disponible del cliente.");
+            customer.CurrentBalance += order.TotalAmount;
+        }
+
+        // Una venta cobrada se registra en la caja abierta del mismo depósito. Las
+        // ventas a cuenta corriente no representan un ingreso de dinero todavía.
+        if (request.PaymentMethod != PaymentMethod.Account)
+        {
+            _context.CashMovements.Add(new CashMovement { Id = Guid.NewGuid(), TenantId = request.TenantId, CashRegisterSessionId = activeCashSession.Id, PaymentMethod = request.PaymentMethod, Amount = order.TotalAmount, IsIncome = true, Description = $"Venta {order.Id:N}" });
+        }
 
         // 4. Guardar Venta y cambios de Stock en una sola transacción
         _context.Orders.Add(order);

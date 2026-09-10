@@ -18,4 +18,15 @@ public sealed class CategoriesController(IMediator mediator) : ControllerBase
     [HttpGet]
     public async Task<IReadOnlyList<CategoryDto>> GetAll([FromQuery] Guid tenantId) =>
         await mediator.Send(new GetCategoriesQuery(tenantId));
+
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, UpdateCategoryCommand command)
+    {
+        if (id != command.Id) return BadRequest("El ID de la categoría no coincide.");
+        return await mediator.Send(command) ? NoContent() : NotFound();
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, [FromQuery] Guid tenantId) =>
+        await mediator.Send(new DeleteCategoryCommand(id, tenantId)) ? NoContent() : NotFound();
 }

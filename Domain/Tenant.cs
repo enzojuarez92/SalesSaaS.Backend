@@ -14,6 +14,12 @@ namespace SalesSaaS.Domain
         [Required]
         [StringLength(20)]
         public string TaxId { get; set; } = string.Empty; 
+        public string? LegalName { get; set; }
+        public string? TaxCondition { get; set; }
+        public string? Address { get; set; }
+        public string? Phone { get; set; }
+        public string? LogoUrl { get; set; }
+        public string? BusinessCategory { get; set; }
 
         public bool IsActive { get; set; } = true;
 

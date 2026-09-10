@@ -15,7 +15,7 @@ public sealed class CancelOrderCommandValidator : AbstractValidator<CancelOrderC
     {
         RuleFor(command => command.TenantId).NotEmpty().WithMessage("El negocio es obligatorio.");
         RuleFor(command => command.OrderId).NotEmpty().WithMessage("El pedido es obligatorio.");
-        RuleFor(command => command.Reason).NotEmpty().MaximumLength(300).WithMessage("El motivo de cancelación es obligatorio.");
+        RuleFor(command => command.Reason).Must(value => !string.IsNullOrWhiteSpace(value)).MaximumLength(300).WithMessage("El motivo de cancelación es obligatorio y no puede superar los 300 caracteres.");
     }
 }
 
@@ -42,7 +42,13 @@ public sealed class CancelOrderCommandHandler(ApplicationDbContext context) : IR
         foreach (var invoice in invoices)
         {
             invoice.Status = "Cancelled";
-            context.CustomerAccountEntries.Add(new CustomerAccountEntry { Id = Guid.NewGuid(), TenantId = request.TenantId, CustomerId = order.CustomerId, InvoiceId = invoice.Id, Type = CustomerAccountEntryType.Credit, Amount = invoice.TotalAmount, Description = $"Nota de crédito por anulación de factura {invoice.Number}" });
+            if (order.PaymentMethod == PaymentMethod.Account)
+                context.CustomerAccountEntries.Add(new CustomerAccountEntry { Id = Guid.NewGuid(), TenantId = request.TenantId, CustomerId = order.CustomerId, InvoiceId = invoice.Id, Type = CustomerAccountEntryType.Credit, Amount = invoice.TotalAmount, Description = $"Nota de crédito por anulación de factura {invoice.Number}" });
+        }
+        if (order.PaymentMethod == PaymentMethod.Account)
+        {
+            var customer = await context.Customers.SingleAsync(item => item.Id == order.CustomerId && item.TenantId == request.TenantId, cancellationToken);
+            customer.CurrentBalance = Math.Max(0, customer.CurrentBalance - order.TotalAmount);
         }
         await context.SaveChangesAsync(cancellationToken);
     }

@@ -43,7 +43,7 @@ public sealed class CancelOrderCommandHandler(ApplicationDbContext context) : IR
         {
             invoice.Status = "Cancelled";
             if (order.PaymentMethod == PaymentMethod.Account)
-                context.CustomerAccountEntries.Add(new CustomerAccountEntry { Id = Guid.NewGuid(), TenantId = request.TenantId, CustomerId = order.CustomerId, InvoiceId = invoice.Id, Type = CustomerAccountEntryType.Credit, Amount = invoice.TotalAmount, Description = $"Nota de crédito por anulación de factura {invoice.Number}" });
+                context.CustomerAccountEntries.Add(new CustomerAccountEntry { Id = Guid.NewGuid(), TenantId = request.TenantId, CustomerId = order.CustomerId, WarehouseId = order.WarehouseId, InvoiceId = invoice.Id, Type = CustomerAccountEntryType.Credit, Amount = invoice.TotalAmount, Description = $"Nota de crédito por anulación de factura {invoice.Number}" });
         }
         if (order.PaymentMethod == PaymentMethod.Account)
         {

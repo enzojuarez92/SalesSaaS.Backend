@@ -153,10 +153,15 @@ compatibilidad. Los datos antiguos cargados antes de este criterio y que no
 tengan movimientos iniciales deben regularizarse mediante un ajuste positivo
 en su depósito real antes de venderlos.
 
-## GAP conocido
+## Cuenta corriente y auditoría por sucursal
 
-La cuenta corriente de cliente y los asientos de auditoría hoy pertenecen al
-tenant y no guardan `WarehouseId`. Por eso su saldo es intencionalmente global
-del negocio. Si se requiere estado de cuenta o auditoría estrictamente por
-sucursal, el siguiente paso es agregar `WarehouseId` a esos asientos y crear
-la migración correspondiente.
+Los movimientos nuevos de cuenta corriente requieren `WarehouseId`: tanto los
+fiados facturados como los cobros se consultan y se imputan al depósito activo.
+El límite de crédito del cliente se conserva global para evitar que una venta
+en otra sucursal exceda su crédito total. Los registros anteriores a la
+migración permanecen con sucursal nula para no alterar su trazabilidad.
+
+`AuditLog.WarehouseId` también es opcional: se completa automáticamente para
+operaciones que contienen depósito, pedido o sesión de caja. Las acciones de
+configuración global se mantienen sin sucursal y no aparecen al filtrar el
+historial de una sede concreta.

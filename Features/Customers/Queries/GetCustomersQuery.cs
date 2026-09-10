@@ -11,7 +11,8 @@ public record GetCustomersQuery(
     string? SearchTerm = null,
     bool? IsActive = true, // 👈 Por defecto busca activos
     int PageNumber = 1,
-    int PageSize = 10
+    int PageSize = 10,
+    Guid? WarehouseId = null
 ) : IRequest<PagedResult<CustomerDto>>, ITenantScopedRequest;
 
 public record CustomerDto(
@@ -66,30 +67,35 @@ public class GetCustomersQueryHandler : IRequestHandler<GetCustomersQuery, Paged
                 (c.Phone != null && c.Phone.Contains(term)));
         }
 
-        // 4. Conteo total de coincidencias para la paginación
-        var totalCount = await query.CountAsync(cancellationToken);
+        // La ficha de cliente es global al tenant; el saldo mostrado puede
+        // limitarse a la sucursal activa sin modificar el crédito global.
+        var balances = _context.CustomerAccountEntries.Where(entry => entry.TenantId == request.TenantId && (!request.WarehouseId.HasValue || entry.WarehouseId == request.WarehouseId))
+            .GroupBy(entry => entry.CustomerId).Select(group => new { CustomerId = group.Key, Balance = group.Sum(entry => entry.Type == SalesSaaS.Domain.CustomerAccountEntryType.Debit ? entry.Amount : -entry.Amount) });
+        var scoped = query.Select(customer => new { Customer = customer, Balance = balances.Where(balance => balance.CustomerId == customer.Id).Select(balance => (decimal?)balance.Balance).FirstOrDefault() ?? 0 });
+
+        var totalCount = await scoped.CountAsync(cancellationToken);
 
         // 5. Mapeo a tu CustomerDto + Paginación con Skip/Take
-        var items = await query
-            .OrderBy(c => c.Name)
+        var items = await scoped
+            .OrderBy(item => item.Customer.Name)
             .Skip((request.PageNumber - 1) * request.PageSize)
             .Take(request.PageSize)
-            .Select(c => new CustomerDto(
-                c.Id,
-                c.Name,
-                c.DocumentType,
-                c.DocumentNumber,
-                c.TaxCondition,
-                c.Email,
-                c.Phone,
-                c.Address,
-                c.City,
-                c.State,
-                c.PostalCode,
-                c.CreditLimit,
-                c.CurrentBalance,
-                c.AllowCredit,
-                c.IsActive
+            .Select(item => new CustomerDto(
+                item.Customer.Id,
+                item.Customer.Name,
+                item.Customer.DocumentType,
+                item.Customer.DocumentNumber,
+                item.Customer.TaxCondition,
+                item.Customer.Email,
+                item.Customer.Phone,
+                item.Customer.Address,
+                item.Customer.City,
+                item.Customer.State,
+                item.Customer.PostalCode,
+                item.Customer.CreditLimit,
+                item.Balance,
+                item.Customer.AllowCredit,
+                item.Customer.IsActive
             ))
             .ToListAsync(cancellationToken);
 

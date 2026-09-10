@@ -36,6 +36,7 @@ Revisión realizada entre `Domain/`, `Controllers/` y las vistas de
 - Productos y categorías son globales por tenant; el saldo disponible se
   calcula por depósito a partir de `StockMovement`.
 - Ventas, caja, dashboard y exportación de ventas ya reciben `WarehouseId`.
-- `CustomerAccountEntry` y `AuditLog` no tienen `WarehouseId`, por lo que sus
-  datos son globales del tenant. Para reportarlos estrictamente por sucursal
-  hace falta agregar esa columna, migrar y poblarla desde la venta/origen.
+- `CustomerAccountEntry` y `AuditLog` ya tienen `WarehouseId` opcional. Los
+  nuevos movimientos operativos se asignan a la sucursal activa; los eventos
+  globales y los registros históricos se conservan sin sucursal para preservar
+  su significado original.

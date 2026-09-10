@@ -27,14 +27,15 @@ public class CustomersController : ControllerBase
         [FromQuery] string? searchTerm = null,
         [FromQuery] bool? isActive = true,
         [FromQuery] int pageNumber = 1,
-        [FromQuery] int pageSize = 10)
+        [FromQuery] int pageSize = 10,
+        [FromQuery] Guid? warehouseId = null)
     {
         if (tenantId == Guid.Empty)
         {
             return BadRequest("El TenantId es obligatorio para consultar clientes.");
         }
 
-        var query = new GetCustomersQuery(tenantId, searchTerm, isActive, pageNumber, pageSize);
+        var query = new GetCustomersQuery(tenantId, searchTerm, isActive, pageNumber, pageSize, warehouseId);
         var result = await _mediator.Send(query);
 
         return Ok(result);
@@ -60,7 +61,7 @@ public class CustomersController : ControllerBase
 
     [HttpGet("{id:guid}/statement")]
     [Authorize(Roles = Roles.Sales)]
-    public async Task<CustomerStatementDto> GetStatement(Guid id, [FromQuery] Guid tenantId) => await _mediator.Send(new GetCustomerStatementQuery(tenantId, id));
+    public async Task<CustomerStatementDto> GetStatement(Guid id, [FromQuery] Guid tenantId, [FromQuery] Guid? warehouseId) => await _mediator.Send(new GetCustomerStatementQuery(tenantId, id, warehouseId));
 
     [HttpPost("{id:guid}/payments")]
     [Authorize(Roles = Roles.Sales)]

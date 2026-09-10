@@ -51,5 +51,7 @@ public sealed class CustomerAccountEntryConfiguration : IEntityTypeConfiguration
         builder.Property(item => item.Amount).HasPrecision(18, 2); builder.Property(item => item.Description).HasMaxLength(300);
         builder.HasOne(item => item.Customer).WithMany().HasForeignKey(item => item.CustomerId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(item => item.Invoice).WithMany().HasForeignKey(item => item.InvoiceId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(item => item.Warehouse).WithMany().HasForeignKey(item => item.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(item => new { item.TenantId, item.WarehouseId, item.CustomerId, item.OccurredAtUtc });
     }
 }

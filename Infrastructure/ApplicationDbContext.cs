@@ -66,10 +66,24 @@ public class ApplicationDbContext : DbContext
                 if (tenantProperty?.CurrentValue is not Guid tenantId || tenantId == Guid.Empty) continue;
                 var action = entry.State == EntityState.Added ? AuditAction.Create : entry.State == EntityState.Deleted ? AuditAction.Delete : AuditAction.Update;
                 var values = entry.Properties.Where(property => !IsSensitive(property.Metadata.Name) && (entry.State != EntityState.Modified || property.IsModified)).ToDictionary(property => property.Metadata.Name, property => new { Old = entry.State == EntityState.Added ? null : property.OriginalValue, New = entry.State == EntityState.Deleted ? null : property.CurrentValue });
-                AuditLogs.Add(new AuditLog { Id = Guid.NewGuid(), TenantId = tenantId, UserId = _currentUser.UserId, EntityName = entry.Metadata.ClrType.Name, Action = action, ChangesJson = JsonSerializer.Serialize(values), TimestampUtc = DateTime.UtcNow });
+                AuditLogs.Add(new AuditLog { Id = Guid.NewGuid(), TenantId = tenantId, UserId = _currentUser.UserId, WarehouseId = ResolveWarehouseId(entry), EntityName = entry.Metadata.ClrType.Name, Action = action, ChangesJson = JsonSerializer.Serialize(values), TimestampUtc = DateTime.UtcNow });
             }
         }
         finally { _isWritingAudit = false; }
+    }
+
+    private Guid? ResolveWarehouseId(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry)
+    {
+        var warehouse = entry.Properties.FirstOrDefault(property => property.Metadata.Name == "WarehouseId")?.CurrentValue;
+        if (warehouse is Guid warehouseId && warehouseId != Guid.Empty) return warehouseId;
+        var orderId = entry.Properties.FirstOrDefault(property => property.Metadata.Name == "OrderId")?.CurrentValue;
+        if (orderId is Guid id && id != Guid.Empty)
+            return ChangeTracker.Entries<Order>().FirstOrDefault(item => item.Entity.Id == id)?.Entity.WarehouseId;
+        var cashSessionId = entry.Properties.FirstOrDefault(property => property.Metadata.Name == "CashRegisterSessionId")?.CurrentValue;
+        if (cashSessionId is Guid sessionId && sessionId != Guid.Empty)
+            return ChangeTracker.Entries<CashRegisterSession>().FirstOrDefault(item => item.Entity.Id == sessionId)?.Entity.WarehouseId
+                ?? CashRegisterSessions.AsNoTracking().Where(item => item.Id == sessionId).Select(item => (Guid?)item.WarehouseId).FirstOrDefault();
+        return null;
     }
 
     private static bool IsSensitive(string propertyName) => propertyName.Contains("Password", StringComparison.OrdinalIgnoreCase) || propertyName.Contains("Token", StringComparison.OrdinalIgnoreCase) || propertyName.Contains("Certificate", StringComparison.OrdinalIgnoreCase) || propertyName.Contains("PrivateKey", StringComparison.OrdinalIgnoreCase) || propertyName.Contains("Passphrase", StringComparison.OrdinalIgnoreCase);

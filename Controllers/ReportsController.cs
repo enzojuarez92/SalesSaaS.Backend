@@ -13,11 +13,11 @@ public sealed record SalesReportRow(Guid Id, DateTime Date, string Customer, dec
 [ApiController][Route("api/reports")][Authorize(Roles=Roles.Administration)]
 public sealed class ReportsController(ApplicationDbContext context, ISender sender) : ControllerBase
 {
- [HttpGet("sales-summary")] public async Task<IReadOnlyList<SalesReportRow>> Sales([FromQuery]Guid tenantId,[FromQuery]DateTime? fromUtc,[FromQuery]DateTime? toUtc,[FromQuery]string? customer,[FromQuery]PaymentMethod? paymentMethod,[FromQuery]string? status)=>await Query(tenantId,fromUtc,toUtc,customer,paymentMethod,status).ToListAsync();
+ [HttpGet("sales-summary")] public async Task<IReadOnlyList<SalesReportRow>> Sales([FromQuery]Guid tenantId,[FromQuery]DateTime? fromUtc,[FromQuery]DateTime? toUtc,[FromQuery]string? customer,[FromQuery]PaymentMethod? paymentMethod,[FromQuery]string? status,[FromQuery]Guid? warehouseId)=>await Query(tenantId,fromUtc,toUtc,customer,paymentMethod,status,warehouseId).ToListAsync();
  [HttpGet("sales/export-excel")]
- public async Task<FileContentResult> Export([FromQuery]Guid tenantId,[FromQuery]DateTime? fromUtc,[FromQuery]DateTime? toUtc,[FromQuery]string? customer,[FromQuery]PaymentMethod? paymentMethod,[FromQuery]string? status)
+ public async Task<FileContentResult> Export([FromQuery]Guid tenantId,[FromQuery]DateTime? fromUtc,[FromQuery]DateTime? toUtc,[FromQuery]string? customer,[FromQuery]PaymentMethod? paymentMethod,[FromQuery]string? status,[FromQuery]Guid? warehouseId)
  {
-     var rows = await Query(tenantId, fromUtc, toUtc, customer, paymentMethod, status).ToListAsync();
+     var rows = await Query(tenantId, fromUtc, toUtc, customer, paymentMethod, status, warehouseId).ToListAsync();
      using var workbook = new XLWorkbook();
      var sheet = workbook.Worksheets.Add("Ventas");
      sheet.Cell("A1").Value = "Reporte de ventas";
@@ -36,6 +36,6 @@ public sealed class ReportsController(ApplicationDbContext context, ISender send
  }
  [HttpGet("inventory-valuation")] public async Task<object> Inventory([FromQuery]Guid tenantId)=>new { cost=await context.Products.Where(x=>x.TenantId==tenantId&&x.IsActive).SumAsync(x=>(decimal?)(x.Stock*x.Cost))??0, retail=await context.Products.Where(x=>x.TenantId==tenantId&&x.IsActive).SumAsync(x=>(decimal?)(x.Stock*x.Price))??0 };
  [HttpGet("audit-logs")] public async Task<IReadOnlyList<AuditLogDto>> Audit([FromQuery]Guid tenantId,[FromQuery]DateTime? fromUtc,[FromQuery]DateTime? toUtc)=>await sender.Send(new GetAuditLogsQuery(tenantId,null,fromUtc,toUtc));
- private IQueryable<SalesReportRow> Query(Guid t,DateTime? f,DateTime? to,string? c,PaymentMethod? p,string? s){var q=context.Orders.AsNoTracking().Include(x=>x.Customer).Where(x=>x.TenantId==t);if(f.HasValue)q=q.Where(x=>x.OrderDate>=f);if(to.HasValue)q=q.Where(x=>x.OrderDate<=to);if(!string.IsNullOrWhiteSpace(c))q=q.Where(x=>x.Customer!.Name.Contains(c));if(p.HasValue)q=q.Where(x=>x.PaymentMethod==p);if(!string.IsNullOrWhiteSpace(s))q=q.Where(x=>x.Status==s);return q.OrderByDescending(x=>x.OrderDate).Select(x=>new SalesReportRow(x.Id,x.OrderDate,x.Customer!.Name,x.TotalAmount,x.PaymentMethod,x.Status));}
+ private IQueryable<SalesReportRow> Query(Guid t,DateTime? f,DateTime? to,string? c,PaymentMethod? p,string? s,Guid? warehouseId){var q=context.Orders.AsNoTracking().Include(x=>x.Customer).Where(x=>x.TenantId==t&&(!warehouseId.HasValue||x.WarehouseId==warehouseId));if(f.HasValue)q=q.Where(x=>x.OrderDate>=f);if(to.HasValue)q=q.Where(x=>x.OrderDate<=to);if(!string.IsNullOrWhiteSpace(c))q=q.Where(x=>x.Customer!.Name.Contains(c));if(p.HasValue)q=q.Where(x=>x.PaymentMethod==p);if(!string.IsNullOrWhiteSpace(s))q=q.Where(x=>x.Status==s);return q.OrderByDescending(x=>x.OrderDate).Select(x=>new SalesReportRow(x.Id,x.OrderDate,x.Customer!.Name,x.TotalAmount,x.PaymentMethod,x.Status));}
  private static string PaymentLabel(PaymentMethod method) => method switch { PaymentMethod.Cash => "Efectivo", PaymentMethod.CreditCard => "Tarjeta de crédito", PaymentMethod.DebitCard => "Tarjeta de débito", PaymentMethod.BankTransfer => "Transferencia", PaymentMethod.MercadoPago => "Mercado Pago", PaymentMethod.Account => "Cuenta corriente", _ => method.ToString() };
 }

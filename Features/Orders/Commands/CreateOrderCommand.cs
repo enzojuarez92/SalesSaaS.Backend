@@ -59,6 +59,10 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
         var products = await _context.Products
             .Where(p => p.TenantId == request.TenantId && productIds.Contains(p.Id))
             .ToListAsync(cancellationToken);
+        var availableByProduct = await _context.StockMovements
+            .Where(movement => movement.TenantId == request.TenantId && movement.WarehouseId == request.WarehouseId && productIds.Contains(movement.ProductId))
+            .GroupBy(movement => movement.ProductId)
+            .ToDictionaryAsync(group => group.Key, group => group.Sum(movement => movement.Quantity), cancellationToken);
 
         var order = new Order
         {
@@ -83,12 +87,15 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
                 throw new InvalidOperationException($"El producto con ID '{itemRequest.ProductId}' no existe.");
             }
 
-            if (product.Stock < itemRequest.Quantity)
+            var available = availableByProduct.GetValueOrDefault(product.Id);
+            if (available < itemRequest.Quantity)
             {
-                throw new InvalidOperationException($"Stock insuficiente para el producto '{product.Name}'. Stock actual: {product.Stock}, solicitado: {itemRequest.Quantity}.");
+                throw new InvalidOperationException($"Stock insuficiente en el depósito seleccionado para el producto '{product.Name}'. Stock actual: {available}, solicitado: {itemRequest.Quantity}.");
             }
 
-            // Descontar stock
+            availableByProduct[product.Id] = available - itemRequest.Quantity;
+            // Product.Stock conserva el total del tenant; el saldo operativo se
+            // controla con movimientos del depósito.
             product.Stock -= itemRequest.Quantity;
 
             var subTotal = product.Price * itemRequest.Quantity;

@@ -29,7 +29,8 @@ public class ProductsController : ControllerBase
         [FromQuery] Guid? categoryId = null,
         [FromQuery] string? stockStatus = null,
         [FromQuery] int pageNumber = 1,
-        [FromQuery] int pageSize = 10)
+        [FromQuery] int pageSize = 10,
+        [FromQuery] Guid? warehouseId = null)
     {
         if (tenantId == Guid.Empty)
         {
@@ -38,7 +39,7 @@ public class ProductsController : ControllerBase
 
         try
         {
-            var query = new GetProductsQuery(tenantId, searchTerm, isActive, categoryId, stockStatus, pageNumber, pageSize);
+            var query = new GetProductsQuery(tenantId, searchTerm, isActive, categoryId, stockStatus, pageNumber, pageSize, warehouseId);
             var products = await _mediator.Send(query);
             return Ok(products);
         }

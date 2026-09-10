@@ -16,7 +16,8 @@ public record CreateProductCommand(
     int Stock,
     int MinimumStockAlert,
     Guid? CategoryId = null,
-    Guid? BrandId = null
+    Guid? BrandId = null,
+    Guid? InitialWarehouseId = null
 ) : IRequest<Guid>, ITenantScopedRequest;
 
 public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand, Guid>
@@ -44,6 +45,8 @@ public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand,
             throw new InvalidOperationException("La categoría no existe o no está activa.");
         if (request.BrandId.HasValue && !await _context.Brands.AnyAsync(brand => brand.Id == request.BrandId && brand.TenantId == request.TenantId && brand.IsActive, cancellationToken))
             throw new InvalidOperationException("La marca no existe o no está activa.");
+        if (request.Stock > 0 && (!request.InitialWarehouseId.HasValue || !await _context.Warehouses.AnyAsync(warehouse => warehouse.Id == request.InitialWarehouseId && warehouse.TenantId == request.TenantId && warehouse.IsActive, cancellationToken)))
+            throw new InvalidOperationException("Elegí un depósito activo para asignar el stock inicial.");
 
         var product = new Product
         {
@@ -63,6 +66,8 @@ public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand,
         };
 
         _context.Products.Add(product);
+        if (request.Stock > 0)
+            _context.StockMovements.Add(new StockMovement { Id = Guid.NewGuid(), TenantId = request.TenantId, ProductId = product.Id, WarehouseId = request.InitialWarehouseId!.Value, Type = StockMovementType.Receipt, Quantity = request.Stock, Reason = "Stock inicial", Reference = product.Id.ToString("N") });
         await _context.SaveChangesAsync(cancellationToken);
 
         return product.Id;

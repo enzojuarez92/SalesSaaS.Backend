@@ -7,13 +7,13 @@ using SalesSaaS.Infrastructure;
 
 namespace SalesSaaS.Features.Analytics;
 
-public sealed record GetDashboardKpisQuery(Guid TenantId, DateOnly? Date = null) : IRequest<DashboardKpisDto>, ITenantScopedRequest;
-public sealed record GetTopSellingProductsQuery(Guid TenantId, int Days = 30, int Take = 10) : IRequest<IReadOnlyList<TopSellingProductDto>>, ITenantScopedRequest;
+public sealed record GetDashboardKpisQuery(Guid TenantId, DateOnly? Date = null, Guid? WarehouseId = null) : IRequest<DashboardKpisDto>, ITenantScopedRequest;
+public sealed record GetTopSellingProductsQuery(Guid TenantId, int Days = 30, int Take = 10, Guid? WarehouseId = null) : IRequest<IReadOnlyList<TopSellingProductDto>>, ITenantScopedRequest;
 public sealed record GetProductsWithoutMovementQuery(Guid TenantId) : IRequest<IReadOnlyList<ProductWithoutMovementDto>>, ITenantScopedRequest;
 public sealed record GetLowStockProductsQuery(Guid TenantId) : IRequest<IReadOnlyList<LowStockProductDto>>, ITenantScopedRequest;
 public sealed record GetInventoryValuationQuery(Guid TenantId) : IRequest<IReadOnlyList<WarehouseInventoryValuationDto>>, ITenantScopedRequest;
-public sealed record GetDashboardSummaryQuery(Guid TenantId) : IRequest<DashboardSummaryDto>, ITenantScopedRequest;
-public sealed record GetDashboardSalesChartQuery(Guid TenantId, int Days = 30) : IRequest<IReadOnlyList<DashboardSalesChartPointDto>>, ITenantScopedRequest;
+public sealed record GetDashboardSummaryQuery(Guid TenantId, Guid? WarehouseId = null) : IRequest<DashboardSummaryDto>, ITenantScopedRequest;
+public sealed record GetDashboardSalesChartQuery(Guid TenantId, int Days = 30, Guid? WarehouseId = null) : IRequest<IReadOnlyList<DashboardSalesChartPointDto>>, ITenantScopedRequest;
 
 public sealed record PeriodMetricDto(decimal Current, decimal Previous, decimal VariationPercentage);
 public sealed record DashboardKpisDto(PeriodMetricDto DailySales, PeriodMetricDto MonthlySales, decimal EstimatedGrossProfit, decimal EstimatedGrossMarginPercentage, int ProcessedOrders, decimal AverageTicket, decimal TotalReceivable, decimal TotalPayable);
@@ -54,7 +54,7 @@ public sealed class GetDashboardKpisQueryHandler(ApplicationDbContext context) :
         var nextMonth = monthStart.AddMonths(1);
         var previousDayStart = dayStart.AddDays(-1);
         var previousMonthStart = monthStart.AddMonths(-1);
-        var orders = context.Orders.AsNoTracking().Where(order => order.TenantId == request.TenantId && order.Status != "Cancelled");
+        var orders = context.Orders.AsNoTracking().Where(order => order.TenantId == request.TenantId && order.Status != "Cancelled" && (!request.WarehouseId.HasValue || order.WarehouseId == request.WarehouseId));
         var dailySales = await SumOrders(orders, dayStart, nextDay, cancellationToken);
         var previousDailySales = await SumOrders(orders, previousDayStart, dayStart, cancellationToken);
         var monthlySales = await SumOrders(orders, monthStart, nextMonth, cancellationToken);
@@ -78,7 +78,7 @@ public sealed class GetTopSellingProductsQueryHandler(ApplicationDbContext conte
     public async Task<IReadOnlyList<TopSellingProductDto>> Handle(GetTopSellingProductsQuery request, CancellationToken cancellationToken)
     {
         var start = DateTime.UtcNow.Date.AddDays(-request.Days);
-        return await context.OrderItems.AsNoTracking().Where(item => item.Order!.TenantId == request.TenantId && item.Order.Status != "Cancelled" && item.Order.OrderDate >= start)
+        return await context.OrderItems.AsNoTracking().Where(item => item.Order!.TenantId == request.TenantId && item.Order.Status != "Cancelled" && item.Order.OrderDate >= start && (!request.WarehouseId.HasValue || item.Order.WarehouseId == request.WarehouseId))
             .GroupBy(item => new { item.ProductId, item.Product!.Sku, item.Product.Name })
             .OrderByDescending(group => group.Sum(item => item.Quantity)).ThenBy(group => group.Key.Name).Take(request.Take)
             .Select(group => new TopSellingProductDto(group.Key.ProductId, group.Key.Sku, group.Key.Name, group.Sum(item => item.Quantity), group.Sum(item => item.SubTotal))).ToListAsync(cancellationToken);
@@ -112,11 +112,11 @@ public sealed class GetDashboardSummaryQueryHandler(ApplicationDbContext context
 {
     public async Task<DashboardSummaryDto> Handle(GetDashboardSummaryQuery request, CancellationToken cancellationToken)
     {
-        var kpis = await sender.Send(new GetDashboardKpisQuery(request.TenantId), cancellationToken);
+        var kpis = await sender.Send(new GetDashboardKpisQuery(request.TenantId, null, request.WarehouseId), cancellationToken);
         var today = DateTime.UtcNow.Date;
-        var dailyTransactions = await context.Orders.AsNoTracking().CountAsync(order => order.TenantId == request.TenantId && order.Status != "Cancelled" && order.OrderDate >= today && order.OrderDate < today.AddDays(1), cancellationToken);
+        var dailyTransactions = await context.Orders.AsNoTracking().CountAsync(order => order.TenantId == request.TenantId && order.Status != "Cancelled" && (!request.WarehouseId.HasValue || order.WarehouseId == request.WarehouseId) && order.OrderDate >= today && order.OrderDate < today.AddDays(1), cancellationToken);
         var criticalStock = await context.Products.AsNoTracking().CountAsync(product => product.TenantId == request.TenantId && product.IsActive && product.Stock <= product.MinimumStockAlert, cancellationToken);
-        var cashSession = await context.CashRegisterSessions.AsNoTracking().Where(session => session.TenantId == request.TenantId && session.Status == "Open").OrderByDescending(session => session.OpenedAtUtc).FirstOrDefaultAsync(cancellationToken);
+        var cashSession = await context.CashRegisterSessions.AsNoTracking().Where(session => session.TenantId == request.TenantId && session.Status == "Open" && (!request.WarehouseId.HasValue || session.WarehouseId == request.WarehouseId)).OrderByDescending(session => session.OpenedAtUtc).FirstOrDefaultAsync(cancellationToken);
         DashboardCashDto? cash = null;
         if (cashSession is not null)
         {
@@ -124,7 +124,7 @@ public sealed class GetDashboardSummaryQueryHandler(ApplicationDbContext context
             var warehouseName = await context.Warehouses.AsNoTracking().Where(warehouse => warehouse.Id == cashSession.WarehouseId).Select(warehouse => warehouse.Name).SingleOrDefaultAsync(cancellationToken) ?? "Depósito";
             cash = new DashboardCashDto(cashSession.Id, warehouseName, cashSession.OpeningBalance + cashNet, cashSession.OpenedAtUtc);
         }
-        var recentSales = await context.Orders.AsNoTracking().Where(order => order.TenantId == request.TenantId).OrderByDescending(order => order.OrderDate).Take(6)
+        var recentSales = await context.Orders.AsNoTracking().Where(order => order.TenantId == request.TenantId && (!request.WarehouseId.HasValue || order.WarehouseId == request.WarehouseId)).OrderByDescending(order => order.OrderDate).Take(6)
             .Select(order => new RecentSaleDto(order.Id, order.Customer!.Name, order.TotalAmount, order.Status, order.OrderDate, order.PaymentMethod)).ToListAsync(cancellationToken);
         return new DashboardSummaryDto(kpis.DailySales.Current, dailyTransactions, kpis.MonthlySales.Current, kpis.ProcessedOrders, Math.Max(0, kpis.TotalReceivable), criticalStock, cash, recentSales);
     }
@@ -136,7 +136,7 @@ public sealed class GetDashboardSalesChartQueryHandler(ApplicationDbContext cont
     {
         var days = Math.Clamp(request.Days, 1, 90);
         var start = DateTime.UtcNow.Date.AddDays(-(days - 1));
-        var totals = await context.Orders.AsNoTracking().Where(order => order.TenantId == request.TenantId && order.Status != "Cancelled" && order.OrderDate >= start)
+        var totals = await context.Orders.AsNoTracking().Where(order => order.TenantId == request.TenantId && order.Status != "Cancelled" && (!request.WarehouseId.HasValue || order.WarehouseId == request.WarehouseId) && order.OrderDate >= start)
             .GroupBy(order => order.OrderDate.Date).Select(group => new { Date = group.Key, Total = group.Sum(order => order.TotalAmount), Transactions = group.Count() }).ToListAsync(cancellationToken);
         var byDate = totals.ToDictionary(item => DateOnly.FromDateTime(item.Date));
         return Enumerable.Range(0, days).Select(offset =>

@@ -13,6 +13,7 @@ public sealed class CreateProductCommandValidator : AbstractValidator<CreateProd
         RuleFor(command => command.Price).GreaterThanOrEqualTo(0);
         RuleFor(command => command.Cost).GreaterThanOrEqualTo(0);
         RuleFor(command => command.Stock).GreaterThanOrEqualTo(0);
+        RuleFor(command => command.InitialWarehouseId).NotEmpty().When(command => command.Stock > 0).WithMessage("El depósito es obligatorio cuando se carga stock inicial.");
         RuleFor(command => command.MinimumStockAlert).GreaterThanOrEqualTo(0);
     }
 }

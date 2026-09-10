@@ -48,7 +48,8 @@ public sealed class RecordStockMovementCommandHandler(ApplicationDbContext conte
         if (!warehouseExists) throw new InvalidOperationException("El depósito no existe o no está activo.");
 
         var delta = GetDelta(request.Type, request.Quantity);
-        if (delta < 0 && product.Stock + delta < 0) throw new InvalidOperationException("No hay stock total suficiente para registrar la salida.");
+        var warehouseStock = await context.StockMovements.Where(item => item.ProductId == request.ProductId && item.WarehouseId == request.WarehouseId).SumAsync(item => (int?)item.Quantity, cancellationToken) ?? 0;
+        if (delta < 0 && warehouseStock + delta < 0) throw new InvalidOperationException("El depósito seleccionado no tiene stock suficiente para registrar la salida.");
 
         var previousStock = product.Stock;
         product.Stock += delta;

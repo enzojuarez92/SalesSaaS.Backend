@@ -34,7 +34,18 @@ public sealed class ReportsController(ApplicationDbContext context, ISender send
      workbook.SaveAs(stream);
      return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"ventas-{DateTime.UtcNow:yyyyMMdd}.xlsx");
  }
- [HttpGet("inventory-valuation")] public async Task<object> Inventory([FromQuery]Guid tenantId)=>new { cost=await context.Products.Where(x=>x.TenantId==tenantId&&x.IsActive).SumAsync(x=>(decimal?)(x.Stock*x.Cost))??0, retail=await context.Products.Where(x=>x.TenantId==tenantId&&x.IsActive).SumAsync(x=>(decimal?)(x.Stock*x.Price))??0 };
+ [HttpGet("inventory-valuation")]
+ public async Task<object> Inventory([FromQuery]Guid tenantId,[FromQuery]Guid? warehouseId)
+ {
+     if (!warehouseId.HasValue)
+         return new { cost=await context.Products.Where(x=>x.TenantId==tenantId&&x.IsActive).SumAsync(x=>(decimal?)(x.Stock*x.Cost))??0, retail=await context.Products.Where(x=>x.TenantId==tenantId&&x.IsActive).SumAsync(x=>(decimal?)(x.Stock*x.Price))??0 };
+     var balances = context.StockMovements.Where(movement => movement.TenantId == tenantId && movement.WarehouseId == warehouseId)
+         .GroupBy(movement => movement.ProductId).Select(group => new { ProductId = group.Key, Quantity = group.Sum(movement => movement.Quantity) });
+     var valuation = await context.Products.Where(product => product.TenantId == tenantId && product.IsActive)
+         .Select(product => new { product.Cost, product.Price, Quantity = balances.Where(balance => balance.ProductId == product.Id).Select(balance => (int?)balance.Quantity).FirstOrDefault() ?? 0 })
+         .ToListAsync();
+     return new { cost = valuation.Sum(item => item.Quantity * item.Cost), retail = valuation.Sum(item => item.Quantity * item.Price) };
+ }
  [HttpGet("audit-logs")] public async Task<IReadOnlyList<AuditLogDto>> Audit([FromQuery]Guid tenantId,[FromQuery]DateTime? fromUtc,[FromQuery]DateTime? toUtc)=>await sender.Send(new GetAuditLogsQuery(tenantId,null,fromUtc,toUtc));
  private IQueryable<SalesReportRow> Query(Guid t,DateTime? f,DateTime? to,string? c,PaymentMethod? p,string? s,Guid? warehouseId){var q=context.Orders.AsNoTracking().Include(x=>x.Customer).Where(x=>x.TenantId==t&&(!warehouseId.HasValue||x.WarehouseId==warehouseId));if(f.HasValue)q=q.Where(x=>x.OrderDate>=f);if(to.HasValue)q=q.Where(x=>x.OrderDate<=to);if(!string.IsNullOrWhiteSpace(c))q=q.Where(x=>x.Customer!.Name.Contains(c));if(p.HasValue)q=q.Where(x=>x.PaymentMethod==p);if(!string.IsNullOrWhiteSpace(s))q=q.Where(x=>x.Status==s);return q.OrderByDescending(x=>x.OrderDate).Select(x=>new SalesReportRow(x.Id,x.OrderDate,x.Customer!.Name,x.TotalAmount,x.PaymentMethod,x.Status));}
  private static string PaymentLabel(PaymentMethod method) => method switch { PaymentMethod.Cash => "Efectivo", PaymentMethod.CreditCard => "Tarjeta de crédito", PaymentMethod.DebitCard => "Tarjeta de débito", PaymentMethod.BankTransfer => "Transferencia", PaymentMethod.MercadoPago => "Mercado Pago", PaymentMethod.Account => "Cuenta corriente", _ => method.ToString() };

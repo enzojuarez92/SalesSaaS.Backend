@@ -18,7 +18,7 @@ public sealed class BillingController(IMediator mediator) : ControllerBase
     public async Task<IReadOnlyList<SubscriptionPlanDto>> GetPlans() => await mediator.Send(new GetSubscriptionPlansQuery());
 
     [HttpPost("plans")]
-    [Authorize(Roles = Roles.Owner)]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> CreatePlan(CreateSubscriptionPlanCommand command) =>
         Created($"/api/billing/plans/{await mediator.Send(command)}", null);
 

@@ -6,6 +6,7 @@ public sealed class StockMovement
     public Guid TenantId { get; set; }
     public Guid ProductId { get; set; }
     public Guid WarehouseId { get; set; }
+    public Guid? UserId { get; set; }
     public StockMovementType Type { get; set; }
     public int Quantity { get; set; }
     public string? Reason { get; set; }

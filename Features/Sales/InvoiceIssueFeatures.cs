@@ -25,6 +25,11 @@ public sealed class IssueInvoiceCommandHandler(ApplicationDbContext context, ISe
         if (order.Status == "Cancelled") throw new InvalidOperationException("No se puede emitir un comprobante para una venta anulada.");
         var customer = await context.Customers.SingleAsync(item => item.Id == order.CustomerId && item.TenantId == request.TenantId, cancellationToken);
         var documentType = ResolveDocumentType(request.DocumentType, customer);
+        if (documentType is not InvoiceDocumentType.CreditNoteA and not InvoiceDocumentType.CreditNoteB and not InvoiceDocumentType.CreditNoteC)
+        {
+            var previous = await context.Invoices.AsNoTracking().Where(i => i.OrderId == order.Id && i.Status != "Cancelled" && i.AfipVoucherType == ToVoucherType(documentType)).OrderBy(i => i.IssuedAtUtc).FirstOrDefaultAsync(cancellationToken);
+            if (previous is not null) return new(previous.Id, previous.Number, previous.Status, previous.AfipVoucherType, previous.Cae, previous.CaeExpirationDate, previous.BarCode, previous.AfipErrors);
+        }
         if (documentType != InvoiceDocumentType.InternalTicket && documentType is not InvoiceDocumentType.CreditNoteA and not InvoiceDocumentType.CreditNoteB and not InvoiceDocumentType.CreditNoteC && await context.Invoices.AnyAsync(item => item.OrderId == order.Id && item.Status == "Issued" && item.AfipVoucherType != AfipVoucherType.CreditNoteA && item.AfipVoucherType != AfipVoucherType.CreditNoteB && item.AfipVoucherType != AfipVoucherType.CreditNoteC, cancellationToken)) throw new InvalidOperationException("La venta ya posee un comprobante fiscal emitido.");
         var number = string.IsNullOrWhiteSpace(request.Number) ? $"POS-{DateTime.UtcNow:yyyyMMddHHmmssfff}" : request.Number.Trim();
         var voucherType = ToVoucherType(documentType);
@@ -40,10 +45,11 @@ public sealed class IssueInvoiceCommandHandler(ApplicationDbContext context, ISe
             var refreshed = await context.Invoices.AsNoTracking().SingleAsync(item => item.Id == invoice.Id, cancellationToken);
             return new InvoiceIssueResultDto(invoice.Id, invoice.Number, refreshed.Status, voucherType, result.Cae, result.CaeExpirationDate, result.BarCode, result.Errors);
         }
-        catch (Exception exception)
+        catch (OperationCanceledException) { throw; }
+        catch (Exception)
         {
             var refreshed = await context.Invoices.AsNoTracking().SingleAsync(item => item.Id == invoice.Id, cancellationToken);
-            return new InvoiceIssueResultDto(invoice.Id, invoice.Number, refreshed.Status, voucherType, refreshed.Cae, refreshed.CaeExpirationDate, refreshed.BarCode, refreshed.AfipErrors ?? exception.Message);
+            return new InvoiceIssueResultDto(invoice.Id, invoice.Number, refreshed.Status, voucherType, refreshed.Cae, refreshed.CaeExpirationDate, refreshed.BarCode, refreshed.AfipErrors ?? "No se pudo completar la autorización. Revisá el estado del comprobante antes de reintentar.");
         }
     }
     private static InvoiceDocumentType ResolveDocumentType(InvoiceDocumentType requested, Customer customer) => requested != InvoiceDocumentType.Auto ? requested : customer.TaxCondition.Contains("Responsable", StringComparison.OrdinalIgnoreCase) ? InvoiceDocumentType.InvoiceA : InvoiceDocumentType.InvoiceB;

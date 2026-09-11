@@ -1,4 +1,4 @@
-﻿using MediatR;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Common;
 using SalesSaaS.Infrastructure;
@@ -68,9 +68,7 @@ public class GetProductsQueryHandler : IRequestHandler<GetProductsQuery, PagedRe
         var query = products.Select(product => new
         {
             Product = product,
-            Stock = request.WarehouseId.HasValue
-                ? _context.StockMovements.Where(movement => movement.ProductId == product.Id && movement.WarehouseId == request.WarehouseId.Value).Sum(movement => (int?)movement.Quantity) ?? 0
-                : product.Stock
+            Stock = _context.StockMovements.Where(movement => movement.ProductId == product.Id).Sum(movement => (int?)movement.Quantity) ?? 0
         });
         if (!string.IsNullOrWhiteSpace(request.StockStatus))
         {
@@ -78,7 +76,7 @@ public class GetProductsQueryHandler : IRequestHandler<GetProductsQuery, PagedRe
             query = status switch
             {
                 "low" => query.Where(item => item.Stock <= item.Product.MinimumStockAlert),
-                "available" => query.Where(item => item.Stock > item.Product.MinimumStockAlert),
+                "available" => query.Where(item => item.Stock > 0),
                 "out" => query.Where(item => item.Stock == 0),
                 _ => throw new InvalidOperationException("El estado de stock no es válido.")
             };

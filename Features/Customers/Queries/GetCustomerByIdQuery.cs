@@ -1,4 +1,4 @@
-﻿using MediatR;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Infrastructure;
 using SalesSaaS.Application.Security;
@@ -34,7 +34,8 @@ namespace SalesSaaS.Features.Customers.Queries
                         c.CreditLimit,
                         c.CurrentBalance,
                         c.AllowCredit,
-                        c.IsActive
+                        c.IsActive,
+                        Math.Max(0, c.CreditLimit - c.CurrentBalance)
                     ))
                 .FirstOrDefaultAsync(cancellationToken);
         }

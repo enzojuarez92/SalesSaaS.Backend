@@ -47,7 +47,7 @@ public sealed class SubscriptionGatekeeper(ApplicationDbContext context) : ISubs
 
     private async Task<TenantSubscriptionWithPlan> GetCurrentSubscriptionAsync(Guid tenantId, CancellationToken cancellationToken) =>
         await context.TenantSubscriptions.AsNoTracking().Where(subscription => subscription.TenantId == tenantId)
-            .OrderByDescending(subscription => subscription.ExpiresAtUtc)
+            .OrderByDescending(subscription => (subscription.Status == SalesSaaS.Domain.SubscriptionStatus.Active || subscription.Status == SalesSaaS.Domain.SubscriptionStatus.Trialing) && subscription.ExpiresAtUtc > DateTime.UtcNow).ThenByDescending(subscription => subscription.StartsAtUtc)
             .Select(subscription => new TenantSubscriptionWithPlan(subscription.Status, subscription.ExpiresAtUtc, subscription.SubscriptionPlan!.MaxUsers, subscription.SubscriptionPlan.MaxWarehouses, subscription.SubscriptionPlan.MaxInvoicesPerMonth, subscription.SubscriptionPlan.SupportsAfip))
             .FirstOrDefaultAsync(cancellationToken) ?? throw new InvalidOperationException("El negocio no tiene una suscripción configurada.");
 

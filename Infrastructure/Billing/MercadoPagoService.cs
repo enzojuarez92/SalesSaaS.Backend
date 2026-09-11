@@ -18,7 +18,7 @@ public sealed class MercadoPagoOptions
 public sealed class MercadoPagoService(HttpClient client, IHostEnvironment environment, IOptions<MercadoPagoOptions> options) : IPaymentGatewayService
 {
     private readonly MercadoPagoOptions _options = options.Value;
-    private bool IsDevelopmentMode => environment.IsDevelopment() || string.IsNullOrWhiteSpace(_options.AccessToken);
+    private bool IsDevelopmentMode => environment.IsDevelopment();
 
     public async Task<PaymentCheckoutResult> CreateSubscriptionCheckoutAsync(PaymentCheckoutRequest request, CancellationToken cancellationToken)
     {
@@ -26,6 +26,7 @@ public sealed class MercadoPagoService(HttpClient client, IHostEnvironment envir
         if (IsDevelopmentMode)
             return new PaymentCheckoutResult("MercadoPago", externalReference, string.Empty, null, true);
 
+        if (string.IsNullOrWhiteSpace(_options.AccessToken)) throw new InvalidOperationException("Mercado Pago no está configurado. Contactá al administrador.");
         using var message = new HttpRequestMessage(HttpMethod.Post, "checkout/preferences");
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AccessToken);
         var payload = new Dictionary<string, object?>
@@ -61,7 +62,7 @@ public sealed class MercadoPagoService(HttpClient client, IHostEnvironment envir
         if (IsDevelopmentMode)
         {
             var simulatedReference = root.TryGetProperty("external_reference", out var external) ? external.GetString() : null;
-            return new PaymentWebhookResult(!string.IsNullOrWhiteSpace(simulatedReference), simulatedReference, true, paymentId, null);
+            return new PaymentWebhookResult(!string.IsNullOrWhiteSpace(simulatedReference), simulatedReference, true, paymentId, null, IsSimulated: true);
         }
         using var request = new HttpRequestMessage(HttpMethod.Get, $"v1/payments/{paymentId}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AccessToken);
@@ -71,6 +72,8 @@ public sealed class MercadoPagoService(HttpClient client, IHostEnvironment envir
         var payment = verified.RootElement;
         var reference = payment.TryGetProperty("external_reference", out var externalReference) ? externalReference.GetString() : null;
         var status = payment.TryGetProperty("status", out var paymentStatus) ? paymentStatus.GetString() : null;
-        return new PaymentWebhookResult(!string.IsNullOrWhiteSpace(reference), reference, string.Equals(status, "approved", StringComparison.OrdinalIgnoreCase), paymentId, null);
+        return new PaymentWebhookResult(!string.IsNullOrWhiteSpace(reference), reference, string.Equals(status, "approved", StringComparison.OrdinalIgnoreCase), paymentId, null,
+            payment.TryGetProperty("transaction_amount", out var amount) ? amount.GetDecimal() : null,
+            payment.TryGetProperty("currency_id", out var currency) ? currency.GetString() : null);
     }
 }

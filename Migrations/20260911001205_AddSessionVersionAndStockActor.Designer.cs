@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SalesSaaS.Infrastructure;
 
@@ -11,9 +12,11 @@ using SalesSaaS.Infrastructure;
 namespace SalesSaaS.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260911001205_AddSessionVersionAndStockActor")]
+    partial class AddSessionVersionAndStockActor
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -466,13 +469,6 @@ namespace SalesSaaS.Migrations
                     b.Property<int>("PaymentMethod")
                         .HasColumnType("int");
 
-                    b.Property<string>("RequestFingerprint")
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<Guid?>("RequestId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -491,11 +487,9 @@ namespace SalesSaaS.Migrations
 
                     b.HasIndex("CustomerId");
 
-                    b.HasIndex("WarehouseId");
+                    b.HasIndex("TenantId");
 
-                    b.HasIndex("TenantId", "RequestId")
-                        .IsUnique()
-                        .HasFilter("[RequestId] IS NOT NULL");
+                    b.HasIndex("WarehouseId");
 
                     b.ToTable("Orders");
                 });

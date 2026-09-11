@@ -102,6 +102,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization(options =>
 {
+    options.AddPolicy("PlatformAdmin", policy => policy.RequireClaim("platform_admin", "true"));
     options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
@@ -116,7 +117,7 @@ builder.Services.AddMediatR(cfg =>
 });
 
 // 3. Registramos los Controllers y los Validadores de FluentValidation
-builder.Services.AddControllers();
+builder.Services.AddControllers(options => options.Filters.Add<RequestScopeFilter>());
 builder.Services.AddValidatorsFromAssembly(typeof(CreateCustomerCommandValidator).Assembly);
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
@@ -139,6 +140,7 @@ if (app.Environment.IsDevelopment())
 // Configure the HTTP request pipeline
 //app.UseHttpsRedirection();
 app.UseAuthentication();
+app.UseMiddleware<ActiveContextMiddleware>();
 app.UseMiddleware<SubscriptionGatekeeperMiddleware>();
 app.UseRateLimiter();
 app.UseAuthorization();

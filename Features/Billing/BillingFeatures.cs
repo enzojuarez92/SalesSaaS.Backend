@@ -84,7 +84,7 @@ public sealed class SubscribeTenantCommandHandler(ApplicationDbContext context, 
 public sealed class GetTenantSubscriptionQueryHandler(ApplicationDbContext context) : IRequestHandler<GetTenantSubscriptionQuery, TenantSubscriptionDto?>
 {
     public async Task<TenantSubscriptionDto?> Handle(GetTenantSubscriptionQuery request, CancellationToken cancellationToken) =>
-        await context.TenantSubscriptions.AsNoTracking().Where(subscription => subscription.TenantId == request.TenantId).OrderByDescending(subscription => subscription.ExpiresAtUtc)
+        await context.TenantSubscriptions.AsNoTracking().Where(subscription => subscription.TenantId == request.TenantId).OrderByDescending(subscription => (subscription.Status == SubscriptionStatus.Active || subscription.Status == SubscriptionStatus.Trialing) && subscription.ExpiresAtUtc > DateTime.UtcNow).ThenByDescending(subscription => subscription.StartsAtUtc)
             .Select(subscription => new TenantSubscriptionDto(subscription.Id, subscription.SubscriptionPlanId, subscription.SubscriptionPlan!.Name, subscription.Status, subscription.StartsAtUtc, subscription.ExpiresAtUtc, subscription.AutoRenew, subscription.ProviderSubscriptionId)).FirstOrDefaultAsync(cancellationToken);
 }
 public sealed class ProcessPaymentWebhookCommandHandler(ApplicationDbContext context, IPaymentGatewayService paymentGatewayService, ILogger<ProcessPaymentWebhookCommandHandler> logger) : IRequestHandler<ProcessPaymentWebhookCommand>
@@ -94,6 +94,9 @@ public sealed class ProcessPaymentWebhookCommandHandler(ApplicationDbContext con
         var result = await paymentGatewayService.ProcessWebhookAsync(request.Provider, request.Payload, request.Signature, cancellationToken);
         if (!result.IsValid || string.IsNullOrWhiteSpace(result.ExternalReference)) throw new InvalidOperationException(result.Error ?? "El webhook de pago no es válido.");
         var invoice = await context.SaaSInvoices.SingleOrDefaultAsync(item => item.ExternalReference == result.ExternalReference, cancellationToken) ?? throw new InvalidOperationException("No existe un cobro SaaS para la referencia recibida.");
+        if (invoice.Status == SaaSInvoiceStatus.Paid) return;
+        if (result.IsPaid && !result.IsSimulated && (result.Amount != invoice.Amount || !string.Equals(result.Currency, invoice.Currency, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("El importe o la moneda del pago no coincide con la suscripción.");
         if (!result.IsPaid) { invoice.Status = SaaSInvoiceStatus.Failed; await context.SaveChangesAsync(cancellationToken); return; }
         invoice.Status = SaaSInvoiceStatus.Paid;
         invoice.PaidAtUtc = DateTime.UtcNow;

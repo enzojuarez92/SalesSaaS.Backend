@@ -131,6 +131,7 @@ public sealed class AuthorizeInvoiceCommandHandler(ApplicationDbContext context,
             invoice.Cae = authorization.Cae;
             invoice.CaeExpirationDate = authorization.CaeExpirationDate;
             invoice.AfipErrors = authorization.Errors;
+            if (authorization.IsApproved) invoice.Number = $"{profile.SalesPoint:D5}-{lastVoucherNumber + 1:D8}";
             invoice.BarCode = authorization.IsApproved && authorization.Cae is not null ? BuildAfipQrUrl(profile, request.VoucherType, lastVoucherNumber + 1, invoice, documentType, documentNumber, authorization.Cae) : null;
             await context.SaveChangesAsync(cancellationToken);
             if (authorization.IsApproved && authorization.Cae is not null) await publisher.Publish(new InvoiceAuthorizedEvent(request.TenantId, invoice.Id, invoice.Number, authorization.Cae, customer.Email, customer.Name, invoice.TotalAmount), cancellationToken);

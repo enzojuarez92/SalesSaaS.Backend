@@ -7,6 +7,8 @@ public class Order
 {
     [Key]
     public Guid Id { get; set; }
+    public Guid? RequestId { get; set; }
+    public string? RequestFingerprint { get; set; }
 
     [Required]
     public Guid TenantId { get; set; }

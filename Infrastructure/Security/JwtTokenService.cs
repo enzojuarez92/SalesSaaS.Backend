@@ -21,6 +21,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : IJwtTokenSer
             new(ClaimTypes.Email, user.Email),
             new(ClaimTypes.Name, $"{user.FirstName} {user.LastName}".Trim()),
             new("tenant_id", membership.TenantId.ToString()),
+            new("token_version", user.TokenVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)),
             new(ClaimTypes.Role, membership.Role)
         };
 

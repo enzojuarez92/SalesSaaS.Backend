@@ -1,4 +1,4 @@
-﻿using MediatR;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SalesSaaS.Features.Products.Commands;
@@ -21,7 +21,7 @@ public class ProductsController : ControllerBase
 
     // 🚀 GET: api/products?tenantId=GUID&searchTerm=xxx&isActive=true&pageNumber=1&pageSize=10
     [HttpGet]
-    [Authorize(Roles = Roles.Sales)]
+    [Authorize(Roles = Roles.Sales + "," + Roles.Warehouse)]
     public async Task<IActionResult> GetProducts(
         [FromQuery] Guid tenantId,
         [FromQuery] string? searchTerm = null,
@@ -47,10 +47,7 @@ public class ProductsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
-        catch (Exception)
-        {
-            return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
-        }
+
     }
 
     [HttpPost("{productId:guid}/stock-adjustment")]
@@ -65,7 +62,7 @@ public class ProductsController : ControllerBase
 
     // 🚀 GET: api/products/GUID_DEL_PRODUCTO?tenantId=GUID_DEL_TENANT
     [HttpGet("{id}")]
-    [Authorize(Roles = Roles.Sales)]
+    [Authorize(Roles = Roles.Sales + "," + Roles.Warehouse)]
     public async Task<IActionResult> GetById(Guid id, [FromQuery] Guid tenantId)
     {
         if (tenantId == Guid.Empty)
@@ -88,10 +85,7 @@ public class ProductsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
-        catch (Exception)
-        {
-            return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
-        }
+
     }
 
     // 🚀 POST: api/products
@@ -113,10 +107,7 @@ public class ProductsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
-        catch (Exception)
-        {
-            return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
-        }
+
     }
 
     // 🚀 PUT: api/products/GUID_DEL_PRODUCTO
@@ -144,10 +135,7 @@ public class ProductsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
-        catch (Exception)
-        {
-            return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
-        }
+
     }
 
     // 🚀 DELETE: api/products/GUID_DEL_PRODUCTO?tenantId=GUID_DEL_TENANT
@@ -176,9 +164,6 @@ public class ProductsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
-        catch (Exception)
-        {
-            return StatusCode(500, "Ocurrió un error interno al procesar la solicitud.");
-        }
+
     }
 }

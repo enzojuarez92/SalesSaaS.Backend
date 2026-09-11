@@ -37,9 +37,7 @@ public sealed class ReportsController(ApplicationDbContext context, ISender send
  [HttpGet("inventory-valuation")]
  public async Task<object> Inventory([FromQuery]Guid tenantId,[FromQuery]Guid? warehouseId)
  {
-     if (!warehouseId.HasValue)
-         return new { cost=await context.Products.Where(x=>x.TenantId==tenantId&&x.IsActive).SumAsync(x=>(decimal?)(x.Stock*x.Cost))??0, retail=await context.Products.Where(x=>x.TenantId==tenantId&&x.IsActive).SumAsync(x=>(decimal?)(x.Stock*x.Price))??0 };
-     var balances = context.StockMovements.Where(movement => movement.TenantId == tenantId && movement.WarehouseId == warehouseId)
+     var balances = context.StockMovements.Where(movement => movement.TenantId == tenantId && (!warehouseId.HasValue || movement.WarehouseId == warehouseId))
          .GroupBy(movement => movement.ProductId).Select(group => new { ProductId = group.Key, Quantity = group.Sum(movement => movement.Quantity) });
      var valuation = await context.Products.Where(product => product.TenantId == tenantId && product.IsActive)
          .Select(product => new { product.Cost, product.Price, Quantity = balances.Where(balance => balance.ProductId == product.Id).Select(balance => (int?)balance.Quantity).FirstOrDefault() ?? 0 })

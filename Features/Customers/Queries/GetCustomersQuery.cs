@@ -1,4 +1,4 @@
-﻿using MediatR;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Common;
 using SalesSaaS.Infrastructure;
@@ -30,7 +30,8 @@ public record CustomerDto(
     decimal CreditLimit,
     decimal CurrentBalance,
     bool AllowCredit,
-    bool IsActive
+    bool IsActive,
+    decimal AvailableCredit = 0
 );
 
 public class GetCustomersQueryHandler : IRequestHandler<GetCustomersQuery, PagedResult<CustomerDto>>

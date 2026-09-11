@@ -12,6 +12,7 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor) : ICur
     public Guid? UserId => GetGuidValue(ClaimTypes.NameIdentifier);
 
     public Guid? TenantId => GetGuidValue("tenant_id");
+    public Guid? WarehouseId => httpContextAccessor.HttpContext?.Items["WarehouseId"] as Guid?;
 
     private Guid? GetGuidValue(string claimType)
     {

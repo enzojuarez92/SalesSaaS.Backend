@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using QRCoder;
 using SalesSaaS.Domain;
 using SalesSaaS.Features.Sales;
 using SalesSaaS.Infrastructure;
@@ -60,7 +61,10 @@ public sealed class InvoicesController(ISender sender, ApplicationDbContext cont
                 });
                 column.Item().AlignRight().PaddingTop(8).Text($"TOTAL  {invoice.TotalAmount.ToString("C2", new System.Globalization.CultureInfo("es-AR"))}").Bold().FontSize(16).FontColor(Colors.Pink.Darken2);
                 if (!string.IsNullOrWhiteSpace(invoice.Cae)) column.Item().Background(Colors.Green.Lighten5).Padding(10).Text($"CAE: {invoice.Cae} · Vencimiento: {invoice.CaeExpirationDate:dd/MM/yyyy}");
-                if (!string.IsNullOrWhiteSpace(invoice.BarCode)) column.Item().Text($"Código QR AFIP: {invoice.BarCode}").FontSize(8).FontColor(Colors.Grey.Darken1);
+                if (!string.IsNullOrWhiteSpace(invoice.Cae) && !string.IsNullOrWhiteSpace(invoice.BarCode))
+                    column.Item().Width(100).Image(PngByteQRCodeHelper.GetQRCode(invoice.BarCode, QRCodeGenerator.ECCLevel.M, 6));
+                if (string.IsNullOrWhiteSpace(invoice.Cae))
+                    column.Item().Text(invoice.AfipVoucherType is null ? "DOCUMENTO NO FISCAL" : "PENDIENTE DE AUTORIZACIÓN — SIN VALIDEZ FISCAL").Bold().FontColor(Colors.Red.Darken2);
             });
             page.Footer().AlignCenter().Text("Comprobante generado por SalesSaaS").FontSize(8).FontColor(Colors.Grey.Darken1);
         })).GeneratePdf();

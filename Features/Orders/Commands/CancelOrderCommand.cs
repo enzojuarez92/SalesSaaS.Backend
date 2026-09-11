@@ -27,6 +27,7 @@ public sealed class CancelOrderCommandHandler(ApplicationDbContext context) : IR
             ?? throw new InvalidOperationException("El pedido no existe.");
         if (order.Status == "Cancelled") throw new InvalidOperationException("El pedido ya está cancelado.");
 
+        if (await context.Invoices.AnyAsync(i => i.OrderId == order.Id && i.Cae != null, cancellationToken)) throw new InvalidOperationException("La venta tiene autorización fiscal. Emití la nota de crédito antes de anularla.");
         order.Status = "Cancelled";
         if (request.ReturnStock)
         {
@@ -42,13 +43,19 @@ public sealed class CancelOrderCommandHandler(ApplicationDbContext context) : IR
         foreach (var invoice in invoices)
         {
             invoice.Status = "Cancelled";
-            if (order.PaymentMethod == PaymentMethod.Account)
-                context.CustomerAccountEntries.Add(new CustomerAccountEntry { Id = Guid.NewGuid(), TenantId = request.TenantId, CustomerId = order.CustomerId, WarehouseId = order.WarehouseId, InvoiceId = invoice.Id, Type = CustomerAccountEntryType.Credit, Amount = invoice.TotalAmount, Description = $"Nota de crédito por anulación de factura {invoice.Number}" });
+
         }
         if (order.PaymentMethod == PaymentMethod.Account)
         {
             var customer = await context.Customers.SingleAsync(item => item.Id == order.CustomerId && item.TenantId == request.TenantId, cancellationToken);
-            customer.CurrentBalance = Math.Max(0, customer.CurrentBalance - order.TotalAmount);
+            customer.CurrentBalance -= order.TotalAmount;
+            context.CustomerAccountEntries.Add(new CustomerAccountEntry { Id = Guid.NewGuid(), TenantId = request.TenantId, CustomerId = order.CustomerId, WarehouseId = order.WarehouseId, Type = CustomerAccountEntryType.Credit, Amount = order.TotalAmount, Description = $"Anulación de venta {order.Id:N}" });
+        }
+        else
+        {
+            var cash = await context.CashRegisterSessions.SingleOrDefaultAsync(s => s.WarehouseId == order.WarehouseId && s.Status == "Open", cancellationToken)
+                ?? throw new InvalidOperationException("Abrí la caja de esta sucursal antes de registrar la devolución.");
+            context.CashMovements.Add(new CashMovement { Id = Guid.NewGuid(), TenantId = request.TenantId, CashRegisterSessionId = cash.Id, Amount = order.TotalAmount, PaymentMethod = order.PaymentMethod, IsIncome = false, Description = $"Anulación de venta {order.Id:N}" });
         }
         await context.SaveChangesAsync(cancellationToken);
     }

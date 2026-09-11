@@ -21,6 +21,7 @@ public sealed class RecordStockMovementCommandValidator : AbstractValidator<Reco
         RuleFor(command => command.ProductId).NotEmpty().WithMessage("El producto es obligatorio.");
         RuleFor(command => command.WarehouseId).NotEmpty().WithMessage("El depósito es obligatorio.");
         RuleFor(command => command.Quantity).GreaterThan(0).WithMessage("La cantidad debe ser mayor a cero.");
+        RuleFor(command => command.Type).Must(type => type is StockMovementType.Receipt or StockMovementType.Issue or StockMovementType.AdjustmentIncrease or StockMovementType.AdjustmentDecrease).WithMessage("Usá el endpoint de transferencia para mover stock entre sucursales.");
         RuleFor(command => command.Reason).NotEmpty().When(command => command.Type is StockMovementType.AdjustmentIncrease or StockMovementType.AdjustmentDecrease).WithMessage("El motivo es obligatorio para ajustes de stock.");
     }
 }
@@ -79,6 +80,7 @@ public sealed class TransferStockCommandHandler(ApplicationDbContext context) : 
         var sourceBalance = await context.StockMovements.Where(item => item.ProductId == product.Id && item.WarehouseId == request.SourceWarehouseId).SumAsync(item => (int?)item.Quantity, cancellationToken) ?? 0;
         if (sourceBalance < request.Quantity) throw new InvalidOperationException("El depósito de origen no tiene stock suficiente para la transferencia.");
 
+        context.Entry(product).Property(x => x.Stock).IsModified = true;
         var reference = request.Reference?.Trim();
         var transferId = Guid.NewGuid().ToString("N");
         context.StockMovements.AddRange(

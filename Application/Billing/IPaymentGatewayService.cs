@@ -8,4 +8,4 @@ public interface IPaymentGatewayService
 
 public sealed record PaymentCheckoutRequest(Guid SaaSInvoiceId, Guid TenantId, decimal Amount, string Currency, string Description, string Provider);
 public sealed record PaymentCheckoutResult(string Provider, string ExternalReference, string CheckoutUrl, string? ProviderSubscriptionId, bool IsSimulated);
-public sealed record PaymentWebhookResult(bool IsValid, string? ExternalReference, bool IsPaid, string? ProviderSubscriptionId, string? Error);
+public sealed record PaymentWebhookResult(bool IsValid, string? ExternalReference, bool IsPaid, string? ProviderSubscriptionId, string? Error, decimal? Amount = null, string? Currency = null, bool IsSimulated = false);

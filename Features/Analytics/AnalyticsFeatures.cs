@@ -89,14 +89,14 @@ public sealed class GetProductsWithoutMovementQueryHandler(ApplicationDbContext 
 {
     public async Task<IReadOnlyList<ProductWithoutMovementDto>> Handle(GetProductsWithoutMovementQuery request, CancellationToken cancellationToken) =>
         await context.Products.AsNoTracking().Where(product => product.TenantId == request.TenantId && product.IsActive && !context.StockMovements.Any(movement => movement.ProductId == product.Id))
-            .OrderBy(product => product.Name).Select(product => new ProductWithoutMovementDto(product.Id, product.Sku, product.Name, product.Stock)).ToListAsync(cancellationToken);
+            .OrderBy(product => product.Name).Select(product => new ProductWithoutMovementDto(product.Id, product.Sku, product.Name, (context.StockMovements.Where(m => m.ProductId == product.Id).Sum(m => (int?)m.Quantity) ?? 0))).ToListAsync(cancellationToken);
 }
 
 public sealed class GetLowStockProductsQueryHandler(ApplicationDbContext context) : IRequestHandler<GetLowStockProductsQuery, IReadOnlyList<LowStockProductDto>>
 {
     public async Task<IReadOnlyList<LowStockProductDto>> Handle(GetLowStockProductsQuery request, CancellationToken cancellationToken) =>
-        await context.Products.AsNoTracking().Where(product => product.TenantId == request.TenantId && product.IsActive && product.Stock <= product.MinimumStockAlert)
-            .OrderBy(product => product.Stock).ThenBy(product => product.Name).Select(product => new LowStockProductDto(product.Id, product.Sku, product.Name, product.Stock, product.MinimumStockAlert)).ToListAsync(cancellationToken);
+        await context.Products.AsNoTracking().Where(product => product.TenantId == request.TenantId && product.IsActive && (context.StockMovements.Where(m => m.ProductId == product.Id).Sum(m => (int?)m.Quantity) ?? 0) <= product.MinimumStockAlert)
+            .OrderBy(product => (context.StockMovements.Where(m => m.ProductId == product.Id).Sum(m => (int?)m.Quantity) ?? 0)).ThenBy(product => product.Name).Select(product => new LowStockProductDto(product.Id, product.Sku, product.Name, (context.StockMovements.Where(m => m.ProductId == product.Id).Sum(m => (int?)m.Quantity) ?? 0), product.MinimumStockAlert)).ToListAsync(cancellationToken);
 }
 
 public sealed class GetInventoryValuationQueryHandler(ApplicationDbContext context) : IRequestHandler<GetInventoryValuationQuery, IReadOnlyList<WarehouseInventoryValuationDto>>
@@ -115,7 +115,7 @@ public sealed class GetDashboardSummaryQueryHandler(ApplicationDbContext context
         var kpis = await sender.Send(new GetDashboardKpisQuery(request.TenantId, null, request.WarehouseId), cancellationToken);
         var today = DateTime.UtcNow.Date;
         var dailyTransactions = await context.Orders.AsNoTracking().CountAsync(order => order.TenantId == request.TenantId && order.Status != "Cancelled" && (!request.WarehouseId.HasValue || order.WarehouseId == request.WarehouseId) && order.OrderDate >= today && order.OrderDate < today.AddDays(1), cancellationToken);
-        var criticalStock = await context.Products.AsNoTracking().CountAsync(product => product.TenantId == request.TenantId && product.IsActive && product.Stock <= product.MinimumStockAlert, cancellationToken);
+        var criticalStock = await context.Products.AsNoTracking().CountAsync(product => product.TenantId == request.TenantId && product.IsActive && (context.StockMovements.Where(m => m.ProductId == product.Id).Sum(m => (int?)m.Quantity) ?? 0) <= product.MinimumStockAlert, cancellationToken);
         var cashSession = await context.CashRegisterSessions.AsNoTracking().Where(session => session.TenantId == request.TenantId && session.Status == "Open" && (!request.WarehouseId.HasValue || session.WarehouseId == request.WarehouseId)).OrderByDescending(session => session.OpenedAtUtc).FirstOrDefaultAsync(cancellationToken);
         DashboardCashDto? cash = null;
         if (cashSession is not null)

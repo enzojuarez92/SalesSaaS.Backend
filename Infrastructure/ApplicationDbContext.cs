@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Security;
@@ -59,6 +59,7 @@ public class ApplicationDbContext : DbContext
         try
         {
             ChangeTracker.DetectChanges();
+            foreach (var movement in ChangeTracker.Entries<StockMovement>().Where(e => e.State == EntityState.Added)) movement.Entity.UserId = _currentUser.UserId;
             var entries = ChangeTracker.Entries().Where(entry => entry.Entity is not AuditLog && entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList();
             foreach (var entry in entries)
             {
@@ -83,7 +84,7 @@ public class ApplicationDbContext : DbContext
         if (cashSessionId is Guid sessionId && sessionId != Guid.Empty)
             return ChangeTracker.Entries<CashRegisterSession>().FirstOrDefault(item => item.Entity.Id == sessionId)?.Entity.WarehouseId
                 ?? CashRegisterSessions.AsNoTracking().Where(item => item.Id == sessionId).Select(item => (Guid?)item.WarehouseId).FirstOrDefault();
-        return null;
+        return _currentUser.WarehouseId;
     }
 
     private static bool IsSensitive(string propertyName) => propertyName.Contains("Password", StringComparison.OrdinalIgnoreCase) || propertyName.Contains("Token", StringComparison.OrdinalIgnoreCase) || propertyName.Contains("Certificate", StringComparison.OrdinalIgnoreCase) || propertyName.Contains("PrivateKey", StringComparison.OrdinalIgnoreCase) || propertyName.Contains("Passphrase", StringComparison.OrdinalIgnoreCase);
@@ -93,6 +94,9 @@ public class ApplicationDbContext : DbContext
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        modelBuilder.Entity<Order>().Property(o => o.RequestFingerprint).HasMaxLength(64);
+        modelBuilder.Entity<Order>().HasIndex(o => new { o.TenantId, o.RequestId }).IsUnique().HasFilter("[RequestId] IS NOT NULL");
+        modelBuilder.Entity<Tenant>().HasQueryFilter(t => !_currentUser.TenantId.HasValue || t.Id == _currentUser.TenantId);
 
         modelBuilder.Entity<Product>().HasQueryFilter(product =>
             !_currentUser.TenantId.HasValue || product.TenantId == _currentUser.TenantId);
@@ -105,13 +109,13 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Notification>().HasQueryFilter(notification =>
             !_currentUser.TenantId.HasValue || notification.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<AuditLog>().HasQueryFilter(log =>
-            !_currentUser.TenantId.HasValue || log.TenantId == _currentUser.TenantId);
+            (!_currentUser.TenantId.HasValue || log.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || log.WarehouseId == _currentUser.WarehouseId));
         modelBuilder.Entity<Customer>().HasQueryFilter(customer =>
             !_currentUser.TenantId.HasValue || customer.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<Order>().HasQueryFilter(order =>
-            !_currentUser.TenantId.HasValue || order.TenantId == _currentUser.TenantId);
+            (!_currentUser.TenantId.HasValue || order.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || order.WarehouseId == _currentUser.WarehouseId));
         modelBuilder.Entity<OrderItem>().HasQueryFilter(item =>
-            !_currentUser.TenantId.HasValue || item.Order!.TenantId == _currentUser.TenantId);
+            (!_currentUser.TenantId.HasValue || item.Order!.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || item.Order!.WarehouseId == _currentUser.WarehouseId));
         modelBuilder.Entity<TenantMembership>().HasQueryFilter(membership =>
             !_currentUser.TenantId.HasValue || membership.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<RefreshToken>().HasQueryFilter(token =>
@@ -119,11 +123,11 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Category>().HasQueryFilter(category => !_currentUser.TenantId.HasValue || category.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<Brand>().HasQueryFilter(brand => !_currentUser.TenantId.HasValue || brand.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<Warehouse>().HasQueryFilter(warehouse => !_currentUser.TenantId.HasValue || warehouse.TenantId == _currentUser.TenantId);
-        modelBuilder.Entity<StockMovement>().HasQueryFilter(movement => !_currentUser.TenantId.HasValue || movement.TenantId == _currentUser.TenantId);
+        modelBuilder.Entity<StockMovement>().HasQueryFilter(movement => (!_currentUser.TenantId.HasValue || movement.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || movement.WarehouseId == _currentUser.WarehouseId));
         modelBuilder.Entity<Quote>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<QuoteItem>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId);
-        modelBuilder.Entity<Invoice>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId);
-        modelBuilder.Entity<CustomerAccountEntry>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId);
-        modelBuilder.Entity<Supplier>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId); modelBuilder.Entity<PurchaseOrder>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId); modelBuilder.Entity<PurchaseOrderItem>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId); modelBuilder.Entity<PurchaseInvoice>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId); modelBuilder.Entity<SupplierAccountEntry>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId); modelBuilder.Entity<CashRegisterSession>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId); modelBuilder.Entity<CashMovement>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId);
+        modelBuilder.Entity<Invoice>().HasQueryFilter(item => (!_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || item.Order!.WarehouseId == _currentUser.WarehouseId));
+        modelBuilder.Entity<CustomerAccountEntry>().HasQueryFilter(item => (!_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || item.WarehouseId == _currentUser.WarehouseId));
+        modelBuilder.Entity<Supplier>().HasQueryFilter(item => !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId); modelBuilder.Entity<PurchaseOrder>().HasQueryFilter(item => (!_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || item.WarehouseId == _currentUser.WarehouseId)); modelBuilder.Entity<PurchaseOrderItem>().HasQueryFilter(item => (!_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || PurchaseOrders.Any(o => o.Id == item.PurchaseOrderId && o.WarehouseId == _currentUser.WarehouseId))); modelBuilder.Entity<PurchaseInvoice>().HasQueryFilter(item => (!_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || PurchaseOrders.Any(o => o.Id == item.PurchaseOrderId && o.WarehouseId == _currentUser.WarehouseId))); modelBuilder.Entity<SupplierAccountEntry>().HasQueryFilter(item => (!_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || PurchaseInvoices.Any(i => i.Id == item.PurchaseInvoiceId && PurchaseOrders.Any(o => o.Id == i.PurchaseOrderId && o.WarehouseId == _currentUser.WarehouseId)))); modelBuilder.Entity<CashRegisterSession>().HasQueryFilter(item => (!_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || item.WarehouseId == _currentUser.WarehouseId)); modelBuilder.Entity<CashMovement>().HasQueryFilter(item => (!_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || CashRegisterSessions.Any(s => s.Id == item.CashRegisterSessionId && s.WarehouseId == _currentUser.WarehouseId)));
     }
 }

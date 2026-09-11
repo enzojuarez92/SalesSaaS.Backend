@@ -47,8 +47,6 @@ public sealed class CreateInvoiceFromOrderCommandHandler(ApplicationDbContext co
         if (await context.Invoices.AnyAsync(item => item.OrderId == order.Id && item.Status == "Issued", cancellationToken)) throw new InvalidOperationException("El pedido ya posee una factura emitida.");
         var invoice = new Invoice { Id = Guid.NewGuid(), TenantId = request.TenantId, OrderId = order.Id, CustomerId = order.CustomerId, Number = request.Number.Trim(), TotalAmount = order.TotalAmount, DueAtUtc = request.DueAtUtc };
         context.Invoices.Add(invoice);
-        if (order.PaymentMethod == PaymentMethod.Account)
-            context.CustomerAccountEntries.Add(new CustomerAccountEntry { Id = Guid.NewGuid(), TenantId = request.TenantId, CustomerId = order.CustomerId, WarehouseId = order.WarehouseId, InvoiceId = invoice.Id, Type = CustomerAccountEntryType.Debit, Amount = order.TotalAmount, Description = $"Factura {invoice.Number}" });
         await context.SaveChangesAsync(cancellationToken); return invoice.Id;
     }
 }

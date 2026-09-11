@@ -14,7 +14,8 @@ public record CreateOrderCommand(
     Guid WarehouseId,
     List<OrderItemRequest> Items,
     decimal DiscountAmount = 0,
-    PaymentMethod PaymentMethod = PaymentMethod.Cash
+    PaymentMethod PaymentMethod = PaymentMethod.Cash,
+    Guid? RequestId = null
 ) : IRequest<Guid>, ITenantScopedRequest;
 
 public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Guid>
@@ -28,6 +29,16 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
 
     public async Task<Guid> Handle(CreateOrderCommand request, CancellationToken cancellationToken)
     {
+        var fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { request.CustomerId, request.WarehouseId, request.Items, request.DiscountAmount, request.PaymentMethod })));
+        if (request.RequestId.HasValue)
+        {
+            var existing = await _context.Orders.SingleOrDefaultAsync(o => o.TenantId == request.TenantId && o.RequestId == request.RequestId, cancellationToken);
+            if (existing is not null)
+            {
+                if (existing.RequestFingerprint != fingerprint) throw new InvalidOperationException("La solicitud ya fue procesada con otros datos.");
+                return existing.Id;
+            }
+        }
         if (request.Items == null || !request.Items.Any())
         {
             throw new InvalidOperationException("La venta debe contener al menos un producto.");
@@ -57,7 +68,7 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
         // 2. Cargar los productos de la BD para verificar precios y stock
         var productIds = request.Items.Select(i => i.ProductId).ToList();
         var products = await _context.Products
-            .Where(p => p.TenantId == request.TenantId && productIds.Contains(p.Id))
+            .Where(p => p.TenantId == request.TenantId && p.IsActive && productIds.Contains(p.Id))
             .ToListAsync(cancellationToken);
         var availableByProduct = await _context.StockMovements
             .Where(movement => movement.TenantId == request.TenantId && movement.WarehouseId == request.WarehouseId && productIds.Contains(movement.ProductId))
@@ -67,6 +78,8 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
         var order = new Order
         {
             Id = Guid.NewGuid(),
+            RequestId = request.RequestId,
+            RequestFingerprint = fingerprint,
             TenantId = request.TenantId,
             CustomerId = request.CustomerId,
             WarehouseId = request.WarehouseId,
@@ -128,6 +141,7 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
             if (customer.CurrentBalance + order.TotalAmount > customer.CreditLimit)
                 throw new InvalidOperationException("La venta supera el crédito disponible del cliente.");
             customer.CurrentBalance += order.TotalAmount;
+            _context.CustomerAccountEntries.Add(new CustomerAccountEntry { Id = Guid.NewGuid(), TenantId = request.TenantId, WarehouseId = request.WarehouseId, CustomerId = customer.Id, Type = CustomerAccountEntryType.Debit, Amount = order.TotalAmount, Description = $"Venta {order.Id:N}" });
         }
 
         // Una venta cobrada se registra en la caja abierta del mismo depósito. Las

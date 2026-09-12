@@ -16,8 +16,15 @@ public sealed class WarehousesController(IMediator mediator, ApplicationDbContex
 {
     [HttpPost]
     [Authorize(Roles = Roles.Inventory)]
-    public async Task<IActionResult> Create(CreateWarehouseCommand command) =>
-        Created($"/api/warehouses/{await mediator.Send(command)}", null);
+    public async Task<ActionResult<WarehouseDto>> Create(CreateWarehouseCommand command, CancellationToken cancellationToken)
+    {
+        var id = await mediator.Send(command, cancellationToken);
+        var warehouse = await context.Warehouses.AsNoTracking()
+            .Where(item => item.Id == id)
+            .Select(item => new WarehouseDto(item.Id, item.Code, item.Name, item.Address, item.IsActive))
+            .SingleAsync(cancellationToken);
+        return Created($"/api/warehouses/{id}", warehouse);
+    }
 
     [HttpGet]
     [Authorize(Roles = Roles.Sales + "," + Roles.Warehouse)]

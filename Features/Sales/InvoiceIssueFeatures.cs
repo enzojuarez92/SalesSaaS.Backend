@@ -26,7 +26,7 @@ public sealed class IssueInvoiceCommandValidator : AbstractValidator<IssueInvoic
     }
 }
 
-public sealed class IssueInvoiceCommandHandler(ApplicationDbContext context, ISender sender) : IRequestHandler<IssueInvoiceCommand, InvoiceIssueResultDto>
+public sealed class IssueInvoiceCommandHandler(ApplicationDbContext context, ISender sender, IHostEnvironment environment) : IRequestHandler<IssueInvoiceCommand, InvoiceIssueResultDto>
 {
     public async Task<InvoiceIssueResultDto> Handle(IssueInvoiceCommand request, CancellationToken cancellationToken)
     {
@@ -35,8 +35,25 @@ public sealed class IssueInvoiceCommandHandler(ApplicationDbContext context, ISe
         if (order.Status == "Cancelled") throw new InvalidOperationException("No se puede emitir un comprobante para una venta anulada.");
         var customer = await context.Customers.SingleAsync(item => item.Id == order.CustomerId && item.TenantId == request.TenantId, cancellationToken);
         var tenant = await context.Tenants.AsNoTracking().SingleAsync(item => item.Id == request.TenantId, cancellationToken);
+        var isCreditNote = request.DocumentType is InvoiceDocumentType.CreditNoteA or InvoiceDocumentType.CreditNoteB or InvoiceDocumentType.CreditNoteC;
         var associated = await ResolveAssociatedInvoice(request, cancellationToken);
         var voucherType = ResolveVoucherType(request.DocumentType, tenant.TaxCondition, customer.TaxCondition, associated);
+
+        // Una venta no debe depender de un servicio fiscal externo. En desarrollo, o sin
+        // perfil fiscal completo y activo, se registra siempre como ticket interno. Las
+        // notas de crédito continúan exigiendo un comprobante fiscal asociado.
+        if (!isCreditNote && (environment.IsDevelopment() || !await HasActiveFiscalProfile(request.TenantId, cancellationToken)))
+            voucherType = null;
+
+        if (voucherType is null && !isCreditNote)
+        {
+            var internalTicket = await context.Invoices.AsNoTracking()
+                .Where(item => item.OrderId == order.Id && item.Status != "Cancelled" && item.AfipResult == "Internal")
+                .OrderBy(item => item.IssuedAtUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (internalTicket is not null)
+                return new(internalTicket.Id, internalTicket.Number, internalTicket.Status, null, null, null, null, null);
+        }
 
         if (voucherType is not null && request.DocumentType is not (InvoiceDocumentType.CreditNoteA or InvoiceDocumentType.CreditNoteB or InvoiceDocumentType.CreditNoteC))
         {
@@ -88,6 +105,13 @@ public sealed class IssueInvoiceCommandHandler(ApplicationDbContext context, ISe
             throw new InvalidOperationException("Sólo se pueden asociar comprobantes fiscales autorizados con CAE.");
         return associated;
     }
+
+    private Task<bool> HasActiveFiscalProfile(Guid tenantId, CancellationToken cancellationToken) =>
+        context.TenantFiscalProfiles.AsNoTracking().AnyAsync(item =>
+            item.TenantId == tenantId &&
+            item.IsActive &&
+            !string.IsNullOrWhiteSpace(item.IssuerTaxId) &&
+            !string.IsNullOrWhiteSpace(item.CertificateContentEncrypted), cancellationToken);
 
     private static AfipVoucherType? ResolveVoucherType(InvoiceDocumentType requested, string? issuerTaxCondition, string? customerTaxCondition, Invoice? associated)
     {

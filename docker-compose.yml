@@ -32,6 +32,7 @@ services:
       MercadoPago__SuccessUrl: ${MERCADOPAGO_SUCCESS_URL:-}
       MercadoPago__FailureUrl: ${MERCADOPAGO_FAILURE_URL:-}
       MercadoPago__WebhookSecret: ${MERCADOPAGO_WEBHOOK_SECRET:-}
+      MercadoPago__EnableMockCheckout: ${MERCADOPAGO_ENABLE_MOCK_CHECKOUT:-false}
     depends_on:
       sqlserver:
         condition: service_healthy

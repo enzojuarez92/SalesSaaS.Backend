@@ -15,17 +15,20 @@ public sealed class MercadoPagoOptions
     public string? SuccessUrl { get; init; }
     public string? FailureUrl { get; init; }
     public string WebhookSecret { get; init; } = string.Empty;
+    public bool EnableMockCheckout { get; init; }
 }
 
 public sealed class MercadoPagoService(HttpClient client, IHostEnvironment environment, IOptions<MercadoPagoOptions> options) : IPaymentGatewayService
 {
     private readonly MercadoPagoOptions _options = options.Value;
-    private bool IsDevelopmentMode => environment.IsDevelopment();
+    // Production simulation requires an explicit opt-in. A missing token must
+    // never grant paid access by itself.
+    private bool IsMockMode => environment.IsDevelopment() || _options.EnableMockCheckout;
 
     public async Task<PaymentCheckoutResult> CreateSubscriptionCheckoutAsync(PaymentCheckoutRequest request, CancellationToken cancellationToken)
     {
         var externalReference = $"saas-{request.SaaSInvoiceId:N}";
-        if (IsDevelopmentMode)
+        if (IsMockMode)
             return new PaymentCheckoutResult("MercadoPago", externalReference, string.Empty, null, true);
 
         if (string.IsNullOrWhiteSpace(_options.AccessToken)) throw new InvalidOperationException("Mercado Pago no está configurado en la plataforma. Contactá a soporte.");
@@ -62,7 +65,7 @@ public sealed class MercadoPagoService(HttpClient client, IHostEnvironment envir
         var paymentId = root.TryGetProperty("data", out var data) && data.TryGetProperty("id", out var nestedId) ? JsonValue(nestedId) : root.TryGetProperty("id", out var id) ? JsonValue(id) : null;
         if (string.IsNullOrWhiteSpace(paymentId)) return new PaymentWebhookResult(false, null, false, null, "El webhook de Mercado Pago no contiene un pago válido.");
         var eventType = root.TryGetProperty("action", out var action) ? JsonValue(action) : root.TryGetProperty("type", out var type) ? JsonValue(type) : "payment.updated";
-        if (IsDevelopmentMode)
+        if (IsMockMode)
         {
             var simulatedReference = root.TryGetProperty("external_reference", out var external) ? JsonValue(external) : null;
             return new PaymentWebhookResult(!string.IsNullOrWhiteSpace(simulatedReference), simulatedReference, true, paymentId, null, eventType, paymentId, IsSimulated: true);

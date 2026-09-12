@@ -30,6 +30,9 @@ namespace SalesSaaS.Domain
         [Column(TypeName = "decimal(18,2)")]
         public decimal Cost { get; set; } 
 
+        [Column(TypeName = "decimal(5,2)")]
+        public decimal VatRate { get; set; } = 21m;
+
         public int Stock { get; set; }
 
         public int MinimumStockAlert { get; set; } 

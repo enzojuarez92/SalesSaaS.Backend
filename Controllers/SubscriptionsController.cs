@@ -28,9 +28,9 @@ public sealed class SubscriptionsController(ISender sender) : ControllerBase
 
     [HttpPost("mp-webhook")]
     [AllowAnonymous]
-    public async Task<IActionResult> MercadoPagoWebhook([FromBody] JsonElement payload, [FromHeader(Name = "X-Signature")] string? signature)
+    public async Task<IActionResult> MercadoPagoWebhook([FromBody] JsonElement payload, [FromHeader(Name = "X-Signature")] string? signature, [FromHeader(Name = "X-Request-Id")] string? requestId)
     {
-        await sender.Send(new ProcessPaymentWebhookCommand("MercadoPago", payload.GetRawText(), signature));
+        await sender.Send(new ProcessPaymentWebhookCommand("MercadoPago", payload.GetRawText(), signature, requestId));
         return Ok(new { message = "Webhook de Mercado Pago procesado." });
     }
 }

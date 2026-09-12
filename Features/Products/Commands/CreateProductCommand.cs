@@ -17,7 +17,8 @@ public record CreateProductCommand(
     int MinimumStockAlert,
     Guid? CategoryId = null,
     Guid? BrandId = null,
-    Guid? InitialWarehouseId = null
+    Guid? InitialWarehouseId = null,
+    decimal VatRate = 21m
 ) : IRequest<Guid>, ITenantScopedRequest;
 
 public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand, Guid>
@@ -59,6 +60,7 @@ public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand,
             Description = request.Description,
             Price = request.Price,
             Cost = request.Cost,
+            VatRate = request.VatRate,
             Stock = request.Stock,
             MinimumStockAlert = request.MinimumStockAlert,
             IsActive = true,

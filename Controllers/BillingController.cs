@@ -31,9 +31,10 @@ public sealed class BillingController(IMediator mediator) : ControllerBase
 
     [HttpPost("webhooks/{provider}")]
     [AllowAnonymous]
-    public async Task<IActionResult> ProcessWebhook(string provider, [FromBody] JsonElement payload, [FromHeader(Name = "X-Payment-Signature")] string? signature)
+    public async Task<IActionResult> ProcessWebhook(string provider, [FromBody] JsonElement payload, [FromHeader(Name = "X-Payment-Signature")] string? signature, [FromHeader(Name = "X-Request-Id")] string? requestId)
     {
-        await mediator.Send(new ProcessPaymentWebhookCommand(provider, payload.GetRawText(), signature));
+        signature ??= Request.Headers["X-Signature"].FirstOrDefault();
+        await mediator.Send(new ProcessPaymentWebhookCommand(provider, payload.GetRawText(), signature, requestId));
         return Ok(new { message = "Webhook procesado correctamente." });
     }
 }

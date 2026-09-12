@@ -12,14 +12,14 @@ public sealed class DevelopmentPaymentGatewayService : IPaymentGatewayService
         return Task.FromResult(new PaymentCheckoutResult(request.Provider, externalReference, checkoutUrl, null, true));
     }
 
-    public Task<PaymentWebhookResult> ProcessWebhookAsync(string provider, string payload, string? signature, CancellationToken cancellationToken)
+    public Task<PaymentWebhookResult> ProcessWebhookAsync(string provider, string payload, PaymentWebhookHeaders headers, CancellationToken cancellationToken)
     {
         try
         {
             var message = JsonSerializer.Deserialize<DevelopmentWebhookMessage>(payload);
             return Task.FromResult(message is null || string.IsNullOrWhiteSpace(message.ExternalReference)
                 ? new PaymentWebhookResult(false, null, false, null, "El webhook no contiene una referencia externa válida.")
-                : new PaymentWebhookResult(true, message.ExternalReference, string.Equals(message.Status, "paid", StringComparison.OrdinalIgnoreCase), message.ProviderSubscriptionId, null));
+                : new PaymentWebhookResult(true, message.ExternalReference, string.Equals(message.Status, "paid", StringComparison.OrdinalIgnoreCase), message.ProviderSubscriptionId, null, "development.payment", message.ProviderSubscriptionId ?? message.ExternalReference, IsSimulated: true));
         }
         catch (JsonException)
         {

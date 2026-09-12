@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Exceptions;
 using SalesSaaS.Application.Security;
+using SalesSaaS.Domain;
 
 namespace SalesSaaS.Infrastructure.Security;
 
@@ -26,8 +27,7 @@ public sealed class ActiveContextMiddleware(RequestDelegate next)
                     throw new InvalidOperationException("El depósito seleccionado no es válido.");
                 if (!await db.Warehouses.AnyAsync(x => x.Id == warehouseId && x.TenantId == user.TenantId && x.IsActive, http.RequestAborted))
                     throw new ForbiddenAccessException("El depósito no pertenece al negocio activo o está inactivo.");
-                var assigned = http.User.FindFirstValue("warehouse_id");
-                if (assigned is not null && (!Guid.TryParse(assigned, out var assignedId) || assignedId != warehouseId))
+                if (membership.Role is not (Roles.Owner or Roles.Admin) && !await db.UserWarehouses.AnyAsync(x => x.UserId == user.UserId && x.TenantId == user.TenantId && x.WarehouseId == warehouseId, http.RequestAborted))
                     throw new ForbiddenAccessException("No tenés acceso al depósito seleccionado.");
                 http.Items["WarehouseId"] = warehouseId;
             }

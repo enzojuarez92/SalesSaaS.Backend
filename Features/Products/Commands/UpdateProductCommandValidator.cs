@@ -13,6 +13,8 @@ public sealed class UpdateProductCommandValidator : AbstractValidator<UpdateProd
         RuleFor(command => command.Description).MaximumLength(500);
         RuleFor(command => command.Price).GreaterThan(0);
         RuleFor(command => command.Cost).GreaterThanOrEqualTo(0);
+        RuleFor(command => command.VatRate).Must(rate => rate is 0m or 10.5m or 21m)
+            .WithMessage("La alícuota de IVA debe ser 0%, 10,5% o 21%.");
         RuleFor(command => command.Stock).GreaterThanOrEqualTo(0);
         RuleFor(command => command.MinimumStockAlert).GreaterThanOrEqualTo(0);
     }

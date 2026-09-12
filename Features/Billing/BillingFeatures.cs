@@ -12,7 +12,7 @@ public sealed record CreateSubscriptionPlanCommand(string Name, decimal MonthlyP
 public sealed record GetSubscriptionPlansQuery() : IRequest<IReadOnlyList<SubscriptionPlanDto>>;
 public sealed record SubscribeTenantCommand(Guid TenantId, Guid SubscriptionPlanId, bool AnnualBilling, bool AutoRenew, string PaymentProvider) : IRequest<SubscriptionCheckoutDto>, ITenantScopedRequest;
 public sealed record GetTenantSubscriptionQuery(Guid TenantId) : IRequest<TenantSubscriptionDto?>, ITenantScopedRequest;
-public sealed record ProcessPaymentWebhookCommand(string Provider, string Payload, string? Signature) : IRequest;
+public sealed record ProcessPaymentWebhookCommand(string Provider, string Payload, string? Signature, string? RequestId) : IRequest;
 public sealed record SubscriptionPlanDto(Guid Id, string Name, decimal MonthlyPrice, decimal AnnualPrice, string Currency, int MaxUsers, int MaxWarehouses, int MaxInvoicesPerMonth, bool SupportsAfip, bool IsDefault);
 public sealed record TenantSubscriptionDto(Guid Id, Guid SubscriptionPlanId, string PlanName, SubscriptionStatus Status, DateTime StartsAtUtc, DateTime ExpiresAtUtc, bool AutoRenew, string? ProviderSubscriptionId);
 public sealed record SubscriptionCheckoutDto(Guid SubscriptionId, Guid SaaSInvoiceId, string CheckoutUrl, string ExternalReference, bool IsSimulated);
@@ -91,10 +91,14 @@ public sealed class ProcessPaymentWebhookCommandHandler(ApplicationDbContext con
 {
     public async Task Handle(ProcessPaymentWebhookCommand request, CancellationToken cancellationToken)
     {
-        var result = await paymentGatewayService.ProcessWebhookAsync(request.Provider, request.Payload, request.Signature, cancellationToken);
+        var result = await paymentGatewayService.ProcessWebhookAsync(request.Provider, request.Payload, new PaymentWebhookHeaders(request.Signature, request.RequestId), cancellationToken);
         if (!result.IsValid || string.IsNullOrWhiteSpace(result.ExternalReference)) throw new InvalidOperationException(result.Error ?? "El webhook de pago no es válido.");
+        var eventType = result.EventType ?? "payment.updated";
+        var externalEventId = result.ExternalEventId ?? result.ProviderSubscriptionId ?? throw new InvalidOperationException("El webhook no identifica el evento de pago.");
+        if (await context.PaymentWebhookEvents.AnyAsync(item => item.Provider == request.Provider && item.EventType == eventType && item.ExternalEventId == externalEventId, cancellationToken)) return;
         var invoice = await context.SaaSInvoices.SingleOrDefaultAsync(item => item.ExternalReference == result.ExternalReference, cancellationToken) ?? throw new InvalidOperationException("No existe un cobro SaaS para la referencia recibida.");
-        if (invoice.Status == SaaSInvoiceStatus.Paid) return;
+        context.PaymentWebhookEvents.Add(new PaymentWebhookEvent { Id = Guid.NewGuid(), Provider = request.Provider, EventType = eventType, ExternalEventId = externalEventId, PayloadHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(request.Payload))).ToLowerInvariant() });
+        if (invoice.Status == SaaSInvoiceStatus.Paid) { await context.SaveChangesAsync(cancellationToken); return; }
         if (result.IsPaid && !result.IsSimulated && (result.Amount != invoice.Amount || !string.Equals(result.Currency, invoice.Currency, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("El importe o la moneda del pago no coincide con la suscripción.");
         if (!result.IsPaid) { invoice.Status = SaaSInvoiceStatus.Failed; await context.SaveChangesAsync(cancellationToken); return; }

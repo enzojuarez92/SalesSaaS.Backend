@@ -16,7 +16,8 @@ public record UpdateProductCommand(
     int Stock,
     int MinimumStockAlert,
     Guid? CategoryId = null,
-    Guid? BrandId = null
+    Guid? BrandId = null,
+    decimal VatRate = 21m
 ) : IRequest<bool>, ITenantScopedRequest;
 
 public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand, bool>
@@ -61,6 +62,7 @@ public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand,
         product.Description = request.Description;
         product.Price = request.Price;
         product.Cost = request.Cost;
+        product.VatRate = request.VatRate;
         // Stock changes are recorded exclusively through inventory movements.
         product.MinimumStockAlert = request.MinimumStockAlert;
         product.CategoryId = request.CategoryId;

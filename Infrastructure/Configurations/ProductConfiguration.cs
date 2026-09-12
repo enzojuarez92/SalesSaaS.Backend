@@ -16,6 +16,7 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.Property(p => p.Name).IsRequired().HasMaxLength(150);
         builder.Property(p => p.Price).HasPrecision(18, 2);
         builder.Property(p => p.Cost).HasPrecision(18, 2);
+        builder.Property(p => p.VatRate).HasPrecision(5, 2).HasDefaultValue(21m);
         builder.Property(p => p.RowVersion).IsRowVersion();
         builder.HasOne(product => product.Category).WithMany().HasForeignKey(product => product.CategoryId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(product => product.Brand).WithMany().HasForeignKey(product => product.BrandId).OnDelete(DeleteBehavior.Restrict);

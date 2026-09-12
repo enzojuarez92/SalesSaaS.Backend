@@ -19,7 +19,7 @@ public sealed record ConfigureTenantFiscalProfileCommand(Guid TenantId, string I
 public sealed record GetTenantFiscalProfileQuery(Guid TenantId) : IRequest<TenantFiscalProfileDto?>, ITenantScopedRequest;
 public sealed record TenantFiscalProfileDto(Guid Id, string IssuerTaxId, string CertificateAlias, bool IsPfxCertificate, AfipEnvironment Environment, int SalesPoint, AfipConcept DefaultConcept, bool IsActive, DateTime UpdatedAtUtc);
 public sealed record AfipVatItemRequest(int Id, decimal BaseAmount, decimal Amount);
-public sealed record AuthorizeInvoiceCommand(Guid TenantId, Guid InvoiceId, AfipVoucherType VoucherType, AfipConcept Concept, decimal ExemptAmount, List<AfipVatItemRequest> VatItems, DateOnly? ServiceStartDate, DateOnly? ServiceEndDate, DateOnly? PaymentDueDate) : IRequest<AfipInvoiceAuthorizationDto>, ITenantScopedRequest;
+public sealed record AuthorizeInvoiceCommand(Guid TenantId, Guid InvoiceId, AfipVoucherType VoucherType, AfipConcept Concept, decimal ExemptAmount, List<AfipVatItemRequest> VatItems, DateOnly? ServiceStartDate, DateOnly? ServiceEndDate, DateOnly? PaymentDueDate, AfipAssociatedVoucher? AssociatedVoucher = null) : IRequest<AfipInvoiceAuthorizationDto>, ITenantScopedRequest;
 public sealed record AfipInvoiceAuthorizationDto(Guid InvoiceId, bool IsApproved, string? Cae, DateOnly? CaeExpirationDate, string? BarCode, string? Errors);
 
 public sealed class ConfigureTenantFiscalProfileCommandValidator : AbstractValidator<ConfigureTenantFiscalProfileCommand>
@@ -117,13 +117,17 @@ public sealed class AuthorizeInvoiceCommandHandler(ApplicationDbContext context,
         var vatItems = request.VatItems.Select(item => new AfipVatItem(item.Id, item.BaseAmount, item.Amount)).ToList();
         var netAmount = vatItems.Sum(item => item.BaseAmount);
         var vatAmount = vatItems.Sum(item => item.Amount);
+        // Factura C no discrimina IVA: WSFE recibe el total como importe neto
+        // sin el bloque Iva, no como una operación exenta.
+        if (request.VoucherType is AfipVoucherType.InvoiceC or AfipVoucherType.CreditNoteC && vatItems.Count == 0 && request.ExemptAmount == 0m)
+            netAmount = invoice.TotalAmount;
         if (decimal.Round(netAmount + vatAmount + request.ExemptAmount, 2) != decimal.Round(invoice.TotalAmount, 2)) throw new InvalidOperationException("Los importes de IVA y exento no coinciden con el total de la factura.");
         var (documentType, documentNumber) = GetCustomerDocument(customer);
 
         try
         {
             var lastVoucherNumber = await afipService.GetLastAuthorizedVoucherAsync(profile, request.VoucherType, cancellationToken);
-            var authorization = await afipService.AuthorizeInvoiceAsync(profile, new AfipAuthorizationRequest(request.VoucherType, lastVoucherNumber + 1, request.Concept, documentType, documentNumber, invoice.TotalAmount, netAmount, vatAmount, request.ExemptAmount, vatItems, DateOnly.FromDateTime(invoice.IssuedAtUtc), request.ServiceStartDate, request.ServiceEndDate, request.PaymentDueDate), cancellationToken);
+            var authorization = await afipService.AuthorizeInvoiceAsync(profile, new AfipAuthorizationRequest(request.VoucherType, lastVoucherNumber + 1, request.Concept, documentType, documentNumber, invoice.TotalAmount, netAmount, vatAmount, request.ExemptAmount, vatItems, request.AssociatedVoucher, DateOnly.FromDateTime(invoice.IssuedAtUtc), request.ServiceStartDate, request.ServiceEndDate, request.PaymentDueDate), cancellationToken);
             invoice.AfipVoucherType = request.VoucherType;
             invoice.AfipSalesPoint = profile.SalesPoint;
             invoice.AfipResult = authorization.IsApproved ? "Approved" : "Rejected";

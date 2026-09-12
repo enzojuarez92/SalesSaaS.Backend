@@ -30,6 +30,7 @@ public class GetProductByIdQueryHandler : IRequestHandler<GetProductByIdQuery, P
                 p.Description,
                 p.Price,
                 p.Cost,
+                p.VatRate,
                 _context.StockMovements.Where(m => m.ProductId == p.Id).Sum(m => (int?)m.Quantity) ?? 0,
                 p.MinimumStockAlert,
                 p.IsActive

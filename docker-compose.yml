@@ -31,11 +31,14 @@ services:
       MercadoPago__NotificationUrl: ${MERCADOPAGO_NOTIFICATION_URL:-}
       MercadoPago__SuccessUrl: ${MERCADOPAGO_SUCCESS_URL:-}
       MercadoPago__FailureUrl: ${MERCADOPAGO_FAILURE_URL:-}
+      MercadoPago__WebhookSecret: ${MERCADOPAGO_WEBHOOK_SECRET:-}
     depends_on:
       sqlserver:
         condition: service_healthy
     expose:
       - "8080"
+    volumes:
+      - api_keys:/root/.aspnet/DataProtection-Keys
 
   frontend:
     build:
@@ -49,3 +52,5 @@ services:
 
 volumes:
   sqlserver_data:
+  api_keys:
+    name: salessaas_api_keys

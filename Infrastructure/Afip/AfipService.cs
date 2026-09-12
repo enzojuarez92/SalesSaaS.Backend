@@ -61,6 +61,13 @@ public sealed class AfipService(
                 new XElement("BaseImp", FormatAmount(item.BaseAmount)),
                 new XElement("Importe", FormatAmount(item.Amount))))));
         }
+        if (request.AssociatedVoucher is not null)
+        {
+            detail.Add(new XElement("CbtesAsoc", new XElement("CbteAsoc",
+                new XElement("Tipo", (int)request.AssociatedVoucher.VoucherType),
+                new XElement("PtoVta", request.AssociatedVoucher.SalesPoint),
+                new XElement("Nro", request.AssociatedVoucher.VoucherNumber))));
+        }
 
         var body = new XElement("FECAESolicitar",
             new XAttribute("xmlns", "http://ar.gov.afip.dif.FEV1/"),

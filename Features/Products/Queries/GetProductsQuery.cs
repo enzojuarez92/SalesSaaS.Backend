@@ -26,6 +26,7 @@ public record ProductDto(
     string Description,
     decimal Price,
     decimal Cost,
+    decimal VatRate,
     int Stock,
     int MinimumStockAlert,
     bool IsActive
@@ -98,6 +99,7 @@ public class GetProductsQueryHandler : IRequestHandler<GetProductsQuery, PagedRe
                 item.Product.Description,
                 item.Product.Price,
                 item.Product.Cost,
+                item.Product.VatRate,
                 item.Stock,
                 item.Product.MinimumStockAlert,
                 item.Product.IsActive

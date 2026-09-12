@@ -123,8 +123,9 @@ Las claves pueden configurarse como variables de entorno con `__` en vez de
 | `Database__MigrateOnStartup` | `true` para aplicar migraciones al arrancar un contenedor API |
 | `Afip__Environment` | `Homologation` o `Production` |
 | `Afip__Cuit`, `Afip__Certificate`, `Afip__PrivateKey` | Credenciales AFIP por ambiente; almacenar secretas |
-| `MercadoPago__AccessToken` | Access token de Mercado Pago; ausente en Development habilita el flujo simulado |
-| `MercadoPago__SuccessUrl`, `MercadoPago__FailureUrl`, `MercadoPago__WebhookUrl` | URLs públicas del checkout y webhook |
+| `MercadoPago__AccessToken` | Access token privado de Mercado Pago; ausente sólo en Development habilita el flujo simulado |
+| `MercadoPago__WebhookSecret` | Clave secreta de la notificación Webhooks de Mercado Pago. Es obligatoria en producción para validar `x-signature` con HMAC SHA-256. |
+| `MercadoPago__SuccessUrl`, `MercadoPago__FailureUrl`, `MercadoPago__NotificationUrl` | URLs HTTPS públicas del checkout y webhook |
 | `Email__Host`, `Email__Port`, `Email__User`, `Email__Password` | SMTP para envío de comprobantes |
 
 ## Salud y datos iniciales
@@ -150,8 +151,7 @@ sucursal.
 
 `Product.Stock` se conserva como total denormalizado del tenant por
 compatibilidad. Los datos antiguos cargados antes de este criterio y que no
-tengan movimientos iniciales deben regularizarse mediante un ajuste positivo
-en su depósito real antes de venderlos.
+tengan movimientos iniciales requieren conciliación física y contable antes de modificarlos. Un ajuste positivo indiscriminado puede duplicar el total del tenant.
 
 ## Cuenta corriente y auditoría por sucursal
 
@@ -165,3 +165,19 @@ migración permanecen con sucursal nula para no alterar su trazabilidad.
 operaciones que contienen depósito, pedido o sesión de caja. Las acciones de
 configuración global se mantienen sin sucursal y no aparecen al filtrar el
 historial de una sede concreta.
+
+## Auditoría y herramientas operativas
+
+Ver [GAP_ANALYSIS.md](GAP_ANALYSIS.md) para alcance probado y pendientes comerciales. No asumir cobertura fiscal universal a partir de un build exitoso.
+
+Las peticiones operativas requieren Bearer JWT y `X-Warehouse-Id` de un depósito activo del tenant. Axios lo transmite automáticamente; el catálogo sigue siendo global. Los roles `Seller` y `Warehouse` sólo reciben y pueden usar los depósitos asignados en `UserWarehouses`; `Owner` y `Admin` administran todas las sucursales.
+
+## Facturación fiscal
+
+La letra automática se decide con la condición IVA del emisor y del receptor: un responsable inscripto emite A a responsables inscriptos/monotributistas y B a consumidor final o exento; monotributo y exento emiten C. Cada producto conserva su alícuota de IVA (0 %, 10,5 % o 21 %) y las notas de crédito quedan vinculadas al comprobante fiscal autorizado que revierten.
+
+En Productos: Kardex por fila, transferencias dentro del historial, Plantilla e Importar Excel. La importación es atómica: corregir los errores antes de reenviar. Compras incluye proveedores y marcas. Presupuestos permite cotizaciones sin impacto en caja o stock.
+
+Las migraciones `AddSessionVersionAndStockActor` y `AddOrderRequestIdempotency` conservan los datos. Los movimientos históricos sin responsable se identifican como históricos.
+
+Docker conserva las claves de certificados en `salessaas_api_keys`. Respaldar ese volumen junto con SQL; al actualizar una instalación anterior, copiar primero sus claves existentes. No ejecutar `docker compose down -v` para actualizar.

@@ -31,6 +31,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<User> Users => Set<User>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
+    public DbSet<UserWarehouse> UserWarehouses => Set<UserWarehouse>();
+    public DbSet<PaymentWebhookEvent> PaymentWebhookEvents => Set<PaymentWebhookEvent>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Brand> Brands => Set<Brand>();
@@ -118,6 +120,8 @@ public class ApplicationDbContext : DbContext
             (!_currentUser.TenantId.HasValue || item.Order!.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || item.Order!.WarehouseId == _currentUser.WarehouseId));
         modelBuilder.Entity<TenantMembership>().HasQueryFilter(membership =>
             !_currentUser.TenantId.HasValue || membership.TenantId == _currentUser.TenantId);
+        modelBuilder.Entity<UserWarehouse>().HasQueryFilter(assignment =>
+            !_currentUser.TenantId.HasValue || assignment.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<RefreshToken>().HasQueryFilter(token =>
             !_currentUser.TenantId.HasValue || token.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<Category>().HasQueryFilter(category => !_currentUser.TenantId.HasValue || category.TenantId == _currentUser.TenantId);

@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using SalesSaaS.Application.Billing;
 
@@ -13,6 +14,7 @@ public sealed class MercadoPagoOptions
     public string? NotificationUrl { get; init; }
     public string? SuccessUrl { get; init; }
     public string? FailureUrl { get; init; }
+    public string WebhookSecret { get; init; } = string.Empty;
 }
 
 public sealed class MercadoPagoService(HttpClient client, IHostEnvironment environment, IOptions<MercadoPagoOptions> options) : IPaymentGatewayService
@@ -52,18 +54,23 @@ public sealed class MercadoPagoService(HttpClient client, IHostEnvironment envir
         return new PaymentCheckoutResult("MercadoPago", externalReference, url, root.TryGetProperty("id", out var preference) ? preference.GetString() : null, false);
     }
 
-    public async Task<PaymentWebhookResult> ProcessWebhookAsync(string provider, string payload, string? signature, CancellationToken cancellationToken)
+    public async Task<PaymentWebhookResult> ProcessWebhookAsync(string provider, string payload, PaymentWebhookHeaders headers, CancellationToken cancellationToken)
     {
         if (!string.Equals(provider, "MercadoPago", StringComparison.OrdinalIgnoreCase)) return new PaymentWebhookResult(false, null, false, null, "Proveedor de pago no soportado.");
         using var incoming = JsonDocument.Parse(payload);
         var root = incoming.RootElement;
-        var paymentId = root.TryGetProperty("data", out var data) && data.TryGetProperty("id", out var nestedId) ? nestedId.GetString() : root.TryGetProperty("id", out var id) ? id.GetString() : null;
+        var paymentId = root.TryGetProperty("data", out var data) && data.TryGetProperty("id", out var nestedId) ? JsonValue(nestedId) : root.TryGetProperty("id", out var id) ? JsonValue(id) : null;
         if (string.IsNullOrWhiteSpace(paymentId)) return new PaymentWebhookResult(false, null, false, null, "El webhook de Mercado Pago no contiene un pago válido.");
+        var eventType = root.TryGetProperty("action", out var action) ? JsonValue(action) : root.TryGetProperty("type", out var type) ? JsonValue(type) : "payment.updated";
         if (IsDevelopmentMode)
         {
-            var simulatedReference = root.TryGetProperty("external_reference", out var external) ? external.GetString() : null;
-            return new PaymentWebhookResult(!string.IsNullOrWhiteSpace(simulatedReference), simulatedReference, true, paymentId, null, IsSimulated: true);
+            var simulatedReference = root.TryGetProperty("external_reference", out var external) ? JsonValue(external) : null;
+            return new PaymentWebhookResult(!string.IsNullOrWhiteSpace(simulatedReference), simulatedReference, true, paymentId, null, eventType, paymentId, IsSimulated: true);
         }
+        if (string.IsNullOrWhiteSpace(_options.AccessToken) || string.IsNullOrWhiteSpace(_options.WebhookSecret))
+            return new PaymentWebhookResult(false, null, false, null, "Mercado Pago no está configurado para recibir webhooks seguros.");
+        if (!HasValidSignature(paymentId, headers))
+            return new PaymentWebhookResult(false, null, false, null, "La firma del webhook de Mercado Pago no es válida.");
         using var request = new HttpRequestMessage(HttpMethod.Get, $"v1/payments/{paymentId}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AccessToken);
         using var response = await client.SendAsync(request, cancellationToken);
@@ -72,8 +79,28 @@ public sealed class MercadoPagoService(HttpClient client, IHostEnvironment envir
         var payment = verified.RootElement;
         var reference = payment.TryGetProperty("external_reference", out var externalReference) ? externalReference.GetString() : null;
         var status = payment.TryGetProperty("status", out var paymentStatus) ? paymentStatus.GetString() : null;
-        return new PaymentWebhookResult(!string.IsNullOrWhiteSpace(reference), reference, string.Equals(status, "approved", StringComparison.OrdinalIgnoreCase), paymentId, null,
+        return new PaymentWebhookResult(!string.IsNullOrWhiteSpace(reference), reference, string.Equals(status, "approved", StringComparison.OrdinalIgnoreCase), paymentId, null, eventType, paymentId,
             payment.TryGetProperty("transaction_amount", out var amount) ? amount.GetDecimal() : null,
-            payment.TryGetProperty("currency_id", out var currency) ? currency.GetString() : null);
+            payment.TryGetProperty("currency_id", out var currency) ? JsonValue(currency) : null);
     }
+
+    private bool HasValidSignature(string paymentId, PaymentWebhookHeaders headers)
+    {
+        if (string.IsNullOrWhiteSpace(headers.Signature) || string.IsNullOrWhiteSpace(headers.RequestId)) return false;
+        string? timestamp = null, suppliedHash = null;
+        foreach (var part in headers.Signature.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var pair = part.Split('=', 2, StringSplitOptions.TrimEntries);
+            if (pair.Length != 2) continue;
+            if (pair[0].Equals("ts", StringComparison.OrdinalIgnoreCase)) timestamp = pair[1];
+            if (pair[0].Equals("v1", StringComparison.OrdinalIgnoreCase)) suppliedHash = pair[1];
+        }
+        if (string.IsNullOrWhiteSpace(timestamp) || string.IsNullOrWhiteSpace(suppliedHash)) return false;
+        var manifest = $"id:{paymentId.ToLowerInvariant()};request-id:{headers.RequestId.ToLowerInvariant()};ts:{timestamp};";
+        var expected = HMACSHA256.HashData(Encoding.UTF8.GetBytes(_options.WebhookSecret), Encoding.UTF8.GetBytes(manifest));
+        try { return CryptographicOperations.FixedTimeEquals(expected, Convert.FromHexString(suppliedHash)); }
+        catch (FormatException) { return false; }
+    }
+
+    private static string? JsonValue(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString() : value.ValueKind == JsonValueKind.Number ? value.GetRawText() : null;
 }

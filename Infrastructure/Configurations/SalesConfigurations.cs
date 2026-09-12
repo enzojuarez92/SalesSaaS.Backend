@@ -29,6 +29,7 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         builder.HasIndex(item => new { item.TenantId, item.Number }).IsUnique(); builder.Property(item => item.Number).HasMaxLength(50); builder.Property(item => item.Status).HasMaxLength(30); builder.Property(item => item.TotalAmount).HasPrecision(18, 2); builder.Property(item => item.Cae).HasMaxLength(20); builder.Property(item => item.AfipResult).HasMaxLength(20); builder.Property(item => item.BarCode).HasMaxLength(1000); builder.Property(item => item.AfipErrors).HasMaxLength(4000);
         builder.HasOne(item => item.Order).WithMany().HasForeignKey(item => item.OrderId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(item => item.Customer).WithMany().HasForeignKey(item => item.CustomerId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(item => item.AssociatedInvoice).WithMany().HasForeignKey(item => item.AssociatedInvoiceId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 public sealed class TenantFiscalProfileConfiguration : IEntityTypeConfiguration<TenantFiscalProfile>

@@ -9,6 +9,7 @@ public interface IAfipService
 }
 
 public sealed record AfipVatItem(int Id, decimal BaseAmount, decimal Amount);
+public sealed record AfipAssociatedVoucher(AfipVoucherType VoucherType, int SalesPoint, long VoucherNumber);
 public sealed record AfipAuthorizationRequest(
     AfipVoucherType VoucherType,
     long VoucherNumber,
@@ -20,6 +21,7 @@ public sealed record AfipAuthorizationRequest(
     decimal VatAmount,
     decimal ExemptAmount,
     IReadOnlyList<AfipVatItem> VatItems,
+    AfipAssociatedVoucher? AssociatedVoucher,
     DateOnly InvoiceDate,
     DateOnly? ServiceStartDate,
     DateOnly? ServiceEndDate,

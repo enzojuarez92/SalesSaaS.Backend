@@ -6,6 +6,7 @@ public sealed class Invoice
     public Guid TenantId { get; set; }
     public Guid OrderId { get; set; }
     public Guid CustomerId { get; set; }
+    public Guid? AssociatedInvoiceId { get; set; }
     public string Number { get; set; } = string.Empty;
     public string Status { get; set; } = "Issued";
     public decimal TotalAmount { get; set; }
@@ -20,4 +21,5 @@ public sealed class Invoice
     public int? AfipSalesPoint { get; set; }
     public Order? Order { get; set; }
     public Customer? Customer { get; set; }
+    public Invoice? AssociatedInvoice { get; set; }
 }

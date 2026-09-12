@@ -15,7 +15,8 @@ public record CreateTenantMemberCommand(
     string LastName,
     string Email,
     string Password,
-    string Role) : IRequest<Guid>, ITenantScopedRequest;
+    string Role,
+    IReadOnlyList<Guid>? WarehouseIds = null) : IRequest<Guid>, ITenantScopedRequest;
 
 public sealed class CreateTenantMemberCommandValidator : AbstractValidator<CreateTenantMemberCommand>
 {
@@ -30,6 +31,9 @@ public sealed class CreateTenantMemberCommandValidator : AbstractValidator<Creat
         RuleFor(command => command.Password).MinimumLength(12);
         RuleFor(command => command.Role).Must(AssignableRoles.Contains)
             .WithMessage("El rol debe ser Admin, Seller o Warehouse.");
+        RuleFor(command => command.WarehouseIds).NotNull().Must(ids => ids!.Count > 0)
+            .When(command => command.Role is Roles.Seller or Roles.Warehouse)
+            .WithMessage("Asigná al menos una sucursal al cajero u operador de stock.");
     }
 }
 
@@ -55,7 +59,15 @@ public sealed class CreateTenantMemberCommandHandler(
             Id = Guid.NewGuid(), UserId = user.Id, TenantId = request.TenantId, Role = request.Role
         };
 
+        var warehouseIds = (request.WarehouseIds ?? []).Distinct().ToArray();
+        if (warehouseIds.Length > 0)
+        {
+            var valid = await context.Warehouses.CountAsync(item => warehouseIds.Contains(item.Id) && item.TenantId == request.TenantId && item.IsActive, cancellationToken);
+            if (valid != warehouseIds.Length) throw new InvalidOperationException("Una o más sucursales asignadas no existen o no están activas.");
+        }
         context.AddRange(user, membership);
+        if (request.Role is Roles.Seller or Roles.Warehouse)
+            context.UserWarehouses.AddRange(warehouseIds.Select(id => new UserWarehouse { Id = Guid.NewGuid(), UserId = user.Id, TenantId = request.TenantId, WarehouseId = id }));
         await context.SaveChangesAsync(cancellationToken);
         return membership.Id;
     }

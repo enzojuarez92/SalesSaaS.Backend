@@ -12,6 +12,8 @@ public sealed class CreateProductCommandValidator : AbstractValidator<CreateProd
         RuleFor(command => command.Description).MaximumLength(500);
         RuleFor(command => command.Price).GreaterThan(0);
         RuleFor(command => command.Cost).GreaterThanOrEqualTo(0);
+        RuleFor(command => command.VatRate).Must(rate => rate is 0m or 10.5m or 21m)
+            .WithMessage("La alícuota de IVA debe ser 0%, 10,5% o 21%.");
         RuleFor(command => command.Stock).GreaterThanOrEqualTo(0);
         RuleFor(command => command.InitialWarehouseId).NotEmpty().When(command => command.Stock > 0).WithMessage("El depósito es obligatorio cuando se carga stock inicial.");
         RuleFor(command => command.MinimumStockAlert).GreaterThanOrEqualTo(0);

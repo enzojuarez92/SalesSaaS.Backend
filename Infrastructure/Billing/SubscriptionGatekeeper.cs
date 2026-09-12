@@ -42,7 +42,7 @@ public sealed class SubscriptionGatekeeper(ApplicationDbContext context) : ISubs
     {
         var subscription = await GetCurrentSubscriptionAsync(tenantId, cancellationToken);
         await EnsureActiveSubscriptionAsync(tenantId, cancellationToken);
-        if (!subscription.SubscriptionPlan.SupportsAfip) throw new InvalidOperationException("El plan actual no incluye facturación electrónica AFIP.");
+        if (!subscription.SubscriptionPlan.SupportsAfip) throw new InvalidOperationException("El plan actual no incluye facturación electrónica ARCA.");
     }
 
     private async Task<TenantSubscriptionWithPlan> GetCurrentSubscriptionAsync(Guid tenantId, CancellationToken cancellationToken) =>

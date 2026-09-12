@@ -74,7 +74,7 @@ public sealed class IssueInvoiceCommandHandler(ApplicationDbContext context, ISe
         catch (Exception)
         {
             var refreshed = await context.Invoices.AsNoTracking().SingleAsync(item => item.Id == invoice.Id, cancellationToken);
-            return new(invoice.Id, invoice.Number, refreshed.Status, voucherType, refreshed.Cae, refreshed.CaeExpirationDate, refreshed.BarCode, refreshed.AfipErrors ?? "No se pudo completar la autorización. Revisá el estado del comprobante antes de reintentar.");
+            return new(invoice.Id, invoice.Number, refreshed.Status, voucherType, refreshed.Cae, refreshed.CaeExpirationDate, refreshed.BarCode, refreshed.AfipErrors ?? "ARCA no pudo autorizar el comprobante. Revisá la configuración fiscal y reintentá desde Facturación.");
         }
     }
 

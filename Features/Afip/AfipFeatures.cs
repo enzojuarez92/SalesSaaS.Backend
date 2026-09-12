@@ -53,7 +53,7 @@ public sealed class AuthorizeInvoiceCommandValidator : AbstractValidator<Authori
         RuleFor(command => command.ExemptAmount).GreaterThanOrEqualTo(0).WithMessage("El importe exento no puede ser negativo.");
         RuleForEach(command => command.VatItems).ChildRules(item =>
         {
-            item.RuleFor(vat => vat.Id).Must(ValidVatIds.Contains).WithMessage("La alícuota de IVA no es válida para AFIP.");
+            item.RuleFor(vat => vat.Id).Must(ValidVatIds.Contains).WithMessage("La alícuota de IVA no es válida para ARCA.");
             item.RuleFor(vat => vat.BaseAmount).GreaterThanOrEqualTo(0).WithMessage("La base imponible no puede ser negativa.");
             item.RuleFor(vat => vat.Amount).GreaterThanOrEqualTo(0).WithMessage("El importe de IVA no puede ser negativo.");
         });
@@ -66,10 +66,12 @@ public sealed class AuthorizeInvoiceCommandValidator : AbstractValidator<Authori
     }
 }
 
-public sealed class ConfigureTenantFiscalProfileCommandHandler(ApplicationDbContext context, IFiscalProfileSecretProtector secretProtector) : IRequestHandler<ConfigureTenantFiscalProfileCommand, Guid>
+public sealed class ConfigureTenantFiscalProfileCommandHandler(ApplicationDbContext context, IFiscalProfileSecretProtector secretProtector, IHostEnvironment environment) : IRequestHandler<ConfigureTenantFiscalProfileCommand, Guid>
 {
     public async Task<Guid> Handle(ConfigureTenantFiscalProfileCommand request, CancellationToken cancellationToken)
     {
+        if (environment.IsDevelopment() && request.Environment == AfipEnvironment.Production)
+            throw new InvalidOperationException("En desarrollo sólo se permite Homologación de ARCA; no se emiten comprobantes reales.");
         if (!await context.Tenants.AnyAsync(item => item.Id == request.TenantId && item.IsActive, cancellationToken)) throw new InvalidOperationException("El negocio no existe o no está activo.");
         var profile = await context.TenantFiscalProfiles.SingleOrDefaultAsync(item => item.TenantId == request.TenantId, cancellationToken);
         if (profile is null)
@@ -156,7 +158,7 @@ public sealed class AuthorizeInvoiceCommandHandler(ApplicationDbContext context,
     {
         var documentType = customer.DocumentType.Trim().ToUpperInvariant() switch { "CUIT" => 80, "CUIL" => 86, "DNI" => 96, _ => 99 };
         var digits = new string(customer.DocumentNumber.Where(char.IsDigit).ToArray());
-        if (documentType != 99 && !long.TryParse(digits, out var documentNumber)) throw new InvalidOperationException("El documento del cliente no es válido para AFIP.");
+        if (documentType != 99 && !long.TryParse(digits, out var documentNumber)) throw new InvalidOperationException("El documento del cliente no es válido para ARCA.");
         return documentType == 99 ? (99, 0) : (documentType, long.Parse(digits, CultureInfo.InvariantCulture));
     }
 

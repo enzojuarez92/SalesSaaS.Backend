@@ -1,0 +1,36 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test .NET API
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore SalesSaaS.csproj
+      - name: Build Release
+        run: dotnet build SalesSaaS.csproj --configuration Release --no-restore
+      - name: Run tests
+        run: dotnet test SalesSaaS.csproj --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+      - name: Publish test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: '**/TestResults/*.trx'
+          if-no-files-found: ignore

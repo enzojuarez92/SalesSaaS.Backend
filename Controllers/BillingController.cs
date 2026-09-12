@@ -11,7 +11,6 @@ namespace SalesSaaS.Controllers;
 [ApiController]
 [Route("api/billing")]
 [Authorize]
-[EnableRateLimiting("billing")]
 public sealed class BillingController(IMediator mediator) : ControllerBase
 {
     [HttpGet("plans")]
@@ -19,11 +18,13 @@ public sealed class BillingController(IMediator mediator) : ControllerBase
 
     [HttpPost("plans")]
     [Authorize(Policy = "PlatformAdmin")]
+    [EnableRateLimiting("billing")]
     public async Task<IActionResult> CreatePlan(CreateSubscriptionPlanCommand command) =>
         Created($"/api/billing/plans/{await mediator.Send(command)}", null);
 
     [HttpPost("subscriptions")]
     [Authorize(Roles = Roles.Administration)]
+    [EnableRateLimiting("billing")]
     public async Task<ActionResult<SubscriptionCheckoutDto>> Subscribe(SubscribeTenantCommand command) => Ok(await mediator.Send(command));
 
     [HttpGet("subscriptions/current")]
@@ -31,6 +32,7 @@ public sealed class BillingController(IMediator mediator) : ControllerBase
 
     [HttpPost("webhooks/{provider}")]
     [AllowAnonymous]
+    [EnableRateLimiting("billing")]
     public async Task<IActionResult> ProcessWebhook(string provider, [FromBody] JsonElement payload, [FromHeader(Name = "X-Payment-Signature")] string? signature, [FromHeader(Name = "X-Request-Id")] string? requestId)
     {
         signature ??= Request.Headers["X-Signature"].FirstOrDefault();

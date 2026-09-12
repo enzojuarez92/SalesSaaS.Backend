@@ -9,6 +9,7 @@ namespace SalesSaaS.Controllers;
 
 [ApiController]
 [Route("api/subscription")]
+[Route("api/subscriptions")]
 [Authorize]
 public sealed class SubscriptionsController(ISender sender) : ControllerBase
 {
@@ -27,6 +28,7 @@ public sealed class SubscriptionsController(ISender sender) : ControllerBase
     public async Task<ActionResult<SubscriptionCheckoutDto>> Checkout([FromBody] SubscribeTenantCommand command) => Ok(await sender.Send(command));
 
     [HttpPost("mp-webhook")]
+    [HttpPost("webhook")]
     [AllowAnonymous]
     public async Task<IActionResult> MercadoPagoWebhook([FromBody] JsonElement payload, [FromHeader(Name = "X-Signature")] string? signature, [FromHeader(Name = "X-Request-Id")] string? requestId)
     {

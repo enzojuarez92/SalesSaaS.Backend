@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Billing;
+using SalesSaaS.Application.Exceptions;
 using SalesSaaS.Infrastructure;
 
 namespace SalesSaaS.Infrastructure.Billing;
@@ -10,7 +11,12 @@ public sealed class SubscriptionGatekeeper(ApplicationDbContext context) : ISubs
     {
         var subscription = await GetCurrentSubscriptionAsync(tenantId, cancellationToken);
         if (subscription.ExpiresAtUtc <= DateTime.UtcNow || subscription.Status is SalesSaaS.Domain.SubscriptionStatus.PastDue or SalesSaaS.Domain.SubscriptionStatus.Canceled)
-            throw new InvalidOperationException("La suscripción del negocio no está activa. Regularizá el plan para continuar.");
+        {
+            var message = subscription.Status == SalesSaaS.Domain.SubscriptionStatus.Trialing
+                ? "Tu periodo de prueba de 7 días ha finalizado. Seleccioná un plan para continuar utilizando el sistema."
+                : "Tu suscripción no está activa. Seleccioná un plan para continuar utilizando el sistema.";
+            throw new SubscriptionAccessException(message);
+        }
     }
 
     public async Task EnsureCanAddUserAsync(Guid tenantId, CancellationToken cancellationToken)

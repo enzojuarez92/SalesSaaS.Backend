@@ -5,7 +5,7 @@ namespace SalesSaaS.Infrastructure.Billing;
 
 public sealed class SubscriptionGatekeeperMiddleware(RequestDelegate next)
 {
-    private static readonly PathString[] ExcludedPaths = ["/api/profile", "/api/auth", "/api/billing", "/api/subscription", "/api/tenants", "/swagger"];
+    private static readonly PathString[] ExcludedPaths = ["/api/profile", "/api/auth", "/api/billing", "/api/subscription", "/api/subscriptions", "/api/tenants", "/api/settings", "/swagger"];
 
     public async Task InvokeAsync(HttpContext context, ICurrentUser currentUser, ISubscriptionGatekeeper gatekeeper)
     {

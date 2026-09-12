@@ -45,6 +45,11 @@ public sealed class GlobalExceptionHandler(
                 "Autenticación requerida.",
                 unauthorizedAccessException.Message,
                 new Dictionary<string, object?>()),
+            SubscriptionAccessException subscriptionAccessException => (
+                StatusCodes.Status402PaymentRequired,
+                "Se requiere una suscripción activa.",
+                subscriptionAccessException.Message,
+                new Dictionary<string, object?>()),
             InvalidOperationException invalidOperationException => (
                 StatusCodes.Status400BadRequest,
                 "No se pudo completar la operación.",

@@ -3,8 +3,6 @@ using System.Text;
 using System.Text.Json;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
 using SalesSaaS.Application.Billing;
 
 namespace SalesSaaS.Infrastructure.Billing;
@@ -19,7 +17,7 @@ public sealed class MercadoPagoOptions
     public string WebhookSecret { get; init; } = string.Empty;
 }
 
-public sealed class MercadoPagoService(HttpClient client, IHostEnvironment environment, IOptions<MercadoPagoOptions> options, ApplicationDbContext context, IDataProtectionProvider protectionProvider) : IPaymentGatewayService
+public sealed class MercadoPagoService(HttpClient client, IHostEnvironment environment, IOptions<MercadoPagoOptions> options) : IPaymentGatewayService
 {
     private readonly MercadoPagoOptions _options = options.Value;
     private bool IsDevelopmentMode => environment.IsDevelopment();
@@ -30,10 +28,9 @@ public sealed class MercadoPagoService(HttpClient client, IHostEnvironment envir
         if (IsDevelopmentMode)
             return new PaymentCheckoutResult("MercadoPago", externalReference, string.Empty, null, true);
 
-        var accessToken = await ResolveAccessTokenAsync(request.TenantId, cancellationToken);
-        if (string.IsNullOrWhiteSpace(accessToken)) throw new InvalidOperationException("Mercado Pago no está configurado para este negocio. Cargá el Access Token en Configuración.");
+        if (string.IsNullOrWhiteSpace(_options.AccessToken)) throw new InvalidOperationException("Mercado Pago no está configurado en la plataforma. Contactá a soporte.");
         using var message = new HttpRequestMessage(HttpMethod.Post, "checkout/preferences");
-        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AccessToken);
         var payload = new Dictionary<string, object?>
         {
             ["items"] = new[] { new { title = request.Description, quantity = 1, currency_id = request.Currency, unit_price = request.Amount } },
@@ -103,13 +100,6 @@ public sealed class MercadoPagoService(HttpClient client, IHostEnvironment envir
         var expected = HMACSHA256.HashData(Encoding.UTF8.GetBytes(_options.WebhookSecret), Encoding.UTF8.GetBytes(manifest));
         try { return CryptographicOperations.FixedTimeEquals(expected, Convert.FromHexString(suppliedHash)); }
         catch (FormatException) { return false; }
-    }
-
-    private async Task<string> ResolveAccessTokenAsync(Guid tenantId, CancellationToken cancellationToken)
-    {
-        var encrypted = await context.TenantMercadoPagoSettings.AsNoTracking().Where(item => item.TenantId == tenantId).Select(item => item.AccessTokenEncrypted).SingleOrDefaultAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(encrypted)) return _options.AccessToken;
-        return protectionProvider.CreateProtector("SalesSaaS.MercadoPago.TenantSettings.v1").Unprotect(encrypted);
     }
 
     private static string? JsonValue(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString() : value.ValueKind == JsonValueKind.Number ? value.GetRawText() : null;

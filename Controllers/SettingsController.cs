@@ -7,7 +7,6 @@ using SalesSaaS.Domain;
 using SalesSaaS.Features.Afip;
 using SalesSaaS.Features.TenantMemberships.Commands;
 using SalesSaaS.Infrastructure;
-using Microsoft.AspNetCore.DataProtection;
 
 namespace SalesSaaS.Controllers;
 
@@ -17,13 +16,11 @@ public sealed record TenantUserDto(Guid Id, string FirstName, string LastName, s
 public sealed record UpdateTenantUserRequest(Guid Id, Guid TenantId, [Required, StringLength(100)] string FirstName, [Required, StringLength(100)] string LastName, [Required, RegularExpression("^(Owner|Admin|Seller|Warehouse)$")] string Role, IReadOnlyList<Guid>? WarehouseIds = null);
 public sealed record ToggleTenantUserRequest(Guid TenantId, bool IsActive);
 public sealed record UpdateUserWarehousesRequest(Guid TenantId, IReadOnlyList<Guid> WarehouseIds);
-public sealed record MercadoPagoSettingsDto(string? PublicKey, bool HasAccessToken, bool HasWebhookSecret, DateTime? UpdatedAtUtc);
-public sealed record UpdateMercadoPagoSettingsRequest(Guid TenantId, [StringLength(300)] string? PublicKey, [StringLength(500)] string? AccessToken, [StringLength(500)] string? WebhookSecret);
 
 [ApiController]
 [Route("api/settings")]
 [Authorize(Roles = Roles.Administration)]
-public sealed class SettingsController(ApplicationDbContext context, ISender sender, IDataProtectionProvider protectionProvider) : ControllerBase
+public sealed class SettingsController(ApplicationDbContext context, ISender sender) : ControllerBase
 {
     [HttpGet("business")]
     public async Task<BusinessSettingsDto> Business([FromQuery] Guid tenantId) { var t = await context.Tenants.SingleAsync(x => x.Id == tenantId); return new(t.Id,t.Name,t.LegalName,t.TaxId,t.TaxCondition,t.Address,t.Phone,t.LogoUrl); }
@@ -32,26 +29,6 @@ public sealed class SettingsController(ApplicationDbContext context, ISender sen
     [HttpPost("afip-cert")]
     public async Task<IActionResult> AfipCert(ConfigureTenantFiscalProfileCommand command) => Ok(new { id = await sender.Send(command) });
 
-    [HttpGet("mercadopago")]
-    public async Task<MercadoPagoSettingsDto> MercadoPago([FromQuery] Guid tenantId)
-    {
-        var settings = await context.TenantMercadoPagoSettings.AsNoTracking().SingleOrDefaultAsync(item => item.TenantId == tenantId);
-        return settings is null ? new(null, false, false, null) : new(settings.PublicKey, !string.IsNullOrWhiteSpace(settings.AccessTokenEncrypted), !string.IsNullOrWhiteSpace(settings.WebhookSecretEncrypted), settings.UpdatedAtUtc);
-    }
-
-    [HttpPut("mercadopago")]
-    public async Task<MercadoPagoSettingsDto> UpdateMercadoPago(UpdateMercadoPagoSettingsRequest request)
-    {
-        var settings = await context.TenantMercadoPagoSettings.SingleOrDefaultAsync(item => item.TenantId == request.TenantId);
-        if (settings is null) { settings = new TenantMercadoPagoSettings { Id = Guid.NewGuid(), TenantId = request.TenantId }; context.TenantMercadoPagoSettings.Add(settings); }
-        var protector = protectionProvider.CreateProtector("SalesSaaS.MercadoPago.TenantSettings.v1");
-        settings.PublicKey = request.PublicKey?.Trim();
-        if (!string.IsNullOrWhiteSpace(request.AccessToken)) settings.AccessTokenEncrypted = protector.Protect(request.AccessToken.Trim());
-        if (!string.IsNullOrWhiteSpace(request.WebhookSecret)) settings.WebhookSecretEncrypted = protector.Protect(request.WebhookSecret.Trim());
-        settings.UpdatedAtUtc = DateTime.UtcNow;
-        await context.SaveChangesAsync();
-        return new(settings.PublicKey, !string.IsNullOrWhiteSpace(settings.AccessTokenEncrypted), !string.IsNullOrWhiteSpace(settings.WebhookSecretEncrypted), settings.UpdatedAtUtc);
-    }
 }
 
 [ApiController]

@@ -16,6 +16,14 @@ public sealed class SuppliersController(IMediator mediator) : ControllerBase
     public async Task<IActionResult> Create(CreateSupplierCommand command) =>
         Created($"/api/suppliers/{await mediator.Send(command)}", null);
 
+    [HttpPut("{supplierId:guid}")]
+    [Authorize(Roles = Roles.Administration)]
+    public async Task<SupplierDto> Update(Guid supplierId, UpdateSupplierCommand command)
+    {
+        if (supplierId != command.Id) throw new InvalidOperationException("El proveedor no coincide.");
+        return await mediator.Send(command);
+    }
+
     [HttpGet]
     [Authorize(Roles = Roles.Inventory)]
     public async Task<IReadOnlyList<SupplierDto>> GetAll([FromQuery] Guid tenantId) =>

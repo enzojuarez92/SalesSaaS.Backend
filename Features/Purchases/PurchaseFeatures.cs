@@ -8,10 +8,11 @@ using SalesSaaS.Application.Validation;
 
 namespace SalesSaaS.Features.Purchases;
 
-public sealed record CreateSupplierCommand(Guid TenantId, string LegalName, string TaxId, string TaxCondition, string? Email) : IRequest<Guid>, ITenantScopedRequest;
+public sealed record CreateSupplierCommand(Guid TenantId, string LegalName, string TaxId, string TaxCondition, string? Email, string? Phone, string? Address) : IRequest<Guid>, ITenantScopedRequest;
+public sealed record UpdateSupplierCommand(Guid Id, Guid TenantId, string LegalName, string TaxId, string TaxCondition, string? Email, string? Phone, string? Address, bool IsActive) : IRequest<SupplierDto>, ITenantScopedRequest;
 public sealed record GetSuppliersQuery(Guid TenantId) : IRequest<IReadOnlyList<SupplierDto>>, ITenantScopedRequest;
 public sealed record GetSupplierAccountQuery(Guid TenantId, Guid SupplierId) : IRequest<IReadOnlyList<SupplierAccountEntryDto>>, ITenantScopedRequest;
-public sealed record SupplierDto(Guid Id, string LegalName, string TaxId, string TaxCondition, string? Email, bool IsActive);
+public sealed record SupplierDto(Guid Id, string LegalName, string TaxId, string TaxCondition, string? Email, string? Phone, string? Address, bool IsActive);
 public sealed record SupplierAccountEntryDto(Guid Id, Guid? PurchaseInvoiceId, decimal Amount, bool IsDebit, string Description, DateTime OccurredAtUtc);
 public sealed record PurchaseOrderItemRequest(Guid ProductId, int Quantity, decimal UnitCost);
 public sealed record CreatePurchaseOrderCommand(Guid TenantId, Guid SupplierId, Guid WarehouseId, List<PurchaseOrderItemRequest> Items) : IRequest<Guid>, ITenantScopedRequest;
@@ -27,6 +28,8 @@ public sealed class CreateSupplierCommandValidator : AbstractValidator<CreateSup
         RuleFor(command => command.TaxId).Must(ArgentineTaxId.IsValid).WithMessage("El CUIT debe contener exactamente 11 dígitos numéricos y ser válido.");
         RuleFor(command => command.TaxCondition).NotEmpty().MaximumLength(80).WithMessage("La condición frente al IVA es obligatoria.");
         RuleFor(command => command.Email).EmailAddress().When(command => !string.IsNullOrWhiteSpace(command.Email)).WithMessage("El correo electrónico no tiene un formato válido.");
+        RuleFor(command => command.Phone).MaximumLength(30).When(command => !string.IsNullOrWhiteSpace(command.Phone));
+        RuleFor(command => command.Address).MaximumLength(300).When(command => !string.IsNullOrWhiteSpace(command.Address));
     }
 }
 
@@ -65,7 +68,7 @@ public sealed class CreateSupplierCommandHandler(ApplicationDbContext context) :
         if (await context.Suppliers.AnyAsync(item => item.TenantId == request.TenantId && item.TaxId == taxId, cancellationToken))
             throw new InvalidOperationException("Ya existe un proveedor con ese CUIT.");
 
-        var supplier = new Supplier { Id = Guid.NewGuid(), TenantId = request.TenantId, LegalName = request.LegalName.Trim(), TaxId = taxId, TaxCondition = request.TaxCondition.Trim(), Email = request.Email?.Trim() };
+        var supplier = new Supplier { Id = Guid.NewGuid(), TenantId = request.TenantId, LegalName = request.LegalName.Trim(), TaxId = taxId, TaxCondition = request.TaxCondition.Trim(), Email = request.Email?.Trim(), Phone = request.Phone?.Trim(), Address = request.Address?.Trim() };
         context.Suppliers.Add(supplier);
         await context.SaveChangesAsync(cancellationToken);
         return supplier.Id;
@@ -76,7 +79,22 @@ public sealed class GetSuppliersQueryHandler(ApplicationDbContext context) : IRe
 {
     public async Task<IReadOnlyList<SupplierDto>> Handle(GetSuppliersQuery request, CancellationToken cancellationToken) =>
         await context.Suppliers.AsNoTracking().Where(item => item.TenantId == request.TenantId).OrderBy(item => item.LegalName)
-            .Select(item => new SupplierDto(item.Id, item.LegalName, item.TaxId, item.TaxCondition, item.Email, item.IsActive)).ToListAsync(cancellationToken);
+            .Select(item => new SupplierDto(item.Id, item.LegalName, item.TaxId, item.TaxCondition, item.Email, item.Phone, item.Address, item.IsActive)).ToListAsync(cancellationToken);
+}
+
+public sealed class UpdateSupplierCommandHandler(ApplicationDbContext context) : IRequestHandler<UpdateSupplierCommand, SupplierDto>
+{
+    public async Task<SupplierDto> Handle(UpdateSupplierCommand request, CancellationToken cancellationToken)
+    {
+        var taxId = request.TaxId.Trim();
+        if (!ArgentineTaxId.IsValid(taxId)) throw new InvalidOperationException("El CUIT debe contener exactamente 11 dígitos numéricos y ser válido.");
+        var supplier = await context.Suppliers.SingleOrDefaultAsync(item => item.Id == request.Id && item.TenantId == request.TenantId, cancellationToken)
+            ?? throw new InvalidOperationException("El proveedor no existe o no pertenece al negocio activo.");
+        if (await context.Suppliers.AnyAsync(item => item.Id != request.Id && item.TenantId == request.TenantId && item.TaxId == taxId, cancellationToken)) throw new InvalidOperationException("Ya existe un proveedor con ese CUIT.");
+        supplier.LegalName = request.LegalName.Trim(); supplier.TaxId = taxId; supplier.TaxCondition = request.TaxCondition.Trim(); supplier.Email = request.Email?.Trim(); supplier.Phone = request.Phone?.Trim(); supplier.Address = request.Address?.Trim(); supplier.IsActive = request.IsActive;
+        await context.SaveChangesAsync(cancellationToken);
+        return new(supplier.Id, supplier.LegalName, supplier.TaxId, supplier.TaxCondition, supplier.Email, supplier.Phone, supplier.Address, supplier.IsActive);
+    }
 }
 
 public sealed class GetSupplierAccountQueryHandler(ApplicationDbContext context) : IRequestHandler<GetSupplierAccountQuery, IReadOnlyList<SupplierAccountEntryDto>>

@@ -71,7 +71,7 @@ public sealed class RegisterTenantCommandHandler(
             defaultPlan = new SubscriptionPlan { Id = Guid.NewGuid(), Name = "Basic", MonthlyPrice = 0, AnnualPrice = 0, Currency = "ARS", MaxUsers = 3, MaxWarehouses = 1, MaxInvoicesPerMonth = 25, SupportsAfip = false, IsDefault = true };
             context.SubscriptionPlans.Add(defaultPlan);
         }
-        var subscription = new TenantSubscription { Id = Guid.NewGuid(), TenantId = tenant.Id, SubscriptionPlanId = defaultPlan.Id, Status = SubscriptionStatus.Trialing, StartsAtUtc = DateTime.UtcNow, ExpiresAtUtc = DateTime.UtcNow.AddDays(14), AutoRenew = false };
+        var subscription = new TenantSubscription { Id = Guid.NewGuid(), TenantId = tenant.Id, SubscriptionPlanId = defaultPlan.Id, Status = SubscriptionStatus.Trialing, StartsAtUtc = DateTime.UtcNow, ExpiresAtUtc = DateTime.UtcNow.AddDays(7), AutoRenew = false };
         var consumerFinal = new Customer
         {
             Id = Guid.NewGuid(), TenantId = tenant.Id, Name = "Consumidor Final", LegalName = "Consumidor Final",

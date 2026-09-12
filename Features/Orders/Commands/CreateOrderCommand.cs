@@ -15,7 +15,8 @@ public record CreateOrderCommand(
     List<OrderItemRequest> Items,
     decimal DiscountAmount = 0,
     PaymentMethod PaymentMethod = PaymentMethod.Cash,
-    Guid? RequestId = null
+    Guid? RequestId = null,
+    Guid? QuoteId = null
 ) : IRequest<Guid>, ITenantScopedRequest;
 
 public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Guid>
@@ -29,7 +30,7 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
 
     public async Task<Guid> Handle(CreateOrderCommand request, CancellationToken cancellationToken)
     {
-        var fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { request.CustomerId, request.WarehouseId, request.Items, request.DiscountAmount, request.PaymentMethod })));
+        var fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { request.CustomerId, request.WarehouseId, request.Items, request.DiscountAmount, request.PaymentMethod, request.QuoteId })));
         if (request.RequestId.HasValue)
         {
             var existing = await _context.Orders.SingleOrDefaultAsync(o => o.TenantId == request.TenantId && o.RequestId == request.RequestId, cancellationToken);
@@ -51,6 +52,17 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
         if (customer is null)
         {
             throw new InvalidOperationException("El cliente especificado no existe o no pertenece a este Inquilino.");
+        }
+
+        Quote? quote = null;
+        if (request.QuoteId.HasValue)
+        {
+            quote = await _context.Quotes.SingleOrDefaultAsync(item => item.Id == request.QuoteId.Value && item.TenantId == request.TenantId, cancellationToken)
+                ?? throw new InvalidOperationException("El presupuesto no existe o no pertenece al negocio activo.");
+            if (!string.Equals(quote.Status, "Draft", StringComparison.OrdinalIgnoreCase) || quote.ExpiresAtUtc < DateTime.UtcNow)
+                throw new InvalidOperationException("El presupuesto ya no está vigente y no puede facturarse.");
+            if (quote.CustomerId != request.CustomerId)
+                throw new InvalidOperationException("El cliente de la venta no coincide con el presupuesto seleccionado.");
         }
 
         var warehouseExists = await _context.Warehouses.AnyAsync(warehouse => warehouse.Id == request.WarehouseId && warehouse.TenantId == request.TenantId && warehouse.IsActive, cancellationToken);
@@ -153,6 +165,7 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
 
         // 4. Guardar Venta y cambios de Stock en una sola transacción
         _context.Orders.Add(order);
+        if (quote is not null) quote.Status = "Invoiced";
         await _context.SaveChangesAsync(cancellationToken);
 
         return order.Id;

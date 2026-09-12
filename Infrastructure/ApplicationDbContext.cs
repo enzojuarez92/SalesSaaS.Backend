@@ -20,6 +20,7 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantFiscalProfile> TenantFiscalProfiles => Set<TenantFiscalProfile>();
+    public DbSet<TenantMercadoPagoSettings> TenantMercadoPagoSettings => Set<TenantMercadoPagoSettings>();
     public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
     public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
     public DbSet<SaaSInvoice> SaaSInvoices => Set<SaaSInvoice>();
@@ -104,6 +105,8 @@ public class ApplicationDbContext : DbContext
             !_currentUser.TenantId.HasValue || product.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<TenantFiscalProfile>().HasQueryFilter(profile =>
             !_currentUser.TenantId.HasValue || profile.TenantId == _currentUser.TenantId);
+        modelBuilder.Entity<TenantMercadoPagoSettings>().HasQueryFilter(settings =>
+            !_currentUser.TenantId.HasValue || settings.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<TenantSubscription>().HasQueryFilter(subscription =>
             !_currentUser.TenantId.HasValue || subscription.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<SaaSInvoice>().HasQueryFilter(invoice =>

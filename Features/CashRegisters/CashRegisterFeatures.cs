@@ -63,7 +63,7 @@ public sealed class OpenCashRegisterSessionCommandHandler(ApplicationDbContext c
                 throw new InvalidOperationException("SESSION_EXPIRED_PREVIOUS_DAY: Existe una caja pendiente de cierre de un día anterior. Realizá el arqueo y cierre antes de abrir un nuevo turno.");
             throw new InvalidOperationException("Ya existe una sesión de caja abierta para este depósito.");
         }
-        var session = new CashRegisterSession { Id = Guid.NewGuid(), TenantId = request.TenantId, WarehouseId = request.WarehouseId, OpeningBalance = request.OpeningBalance };
+        var session = new CashRegisterSession { Id = Guid.NewGuid(), TenantId = request.TenantId, WarehouseId = request.WarehouseId, OpeningBalance = request.OpeningBalance, OpenedAtUtc = DateTime.UtcNow };
         context.CashRegisterSessions.Add(session);
         await context.SaveChangesAsync(cancellationToken);
         return session.Id;
@@ -137,6 +137,10 @@ internal static class CashSessionMapper
         var totals = movements.GroupBy(item => item.PaymentMethod).Select(group => new CashPaymentTotalDto(group.Key, group.Where(item => item.IsIncome).Sum(item => item.Amount), group.Where(item => !item.IsIncome).Sum(item => item.Amount), group.Sum(item => item.IsIncome ? item.Amount : -item.Amount))).OrderBy(item => item.PaymentMethod).ToList();
         var expectedCash = session.OpeningBalance + movements.Where(item => item.PaymentMethod == PaymentMethod.Cash).Sum(item => item.IsIncome ? item.Amount : -item.Amount);
         decimal? difference = session.ClosingBalance.HasValue ? session.ClosingBalance.Value - expectedCash : null;
-        return new CashSessionDto(session.Id, session.WarehouseId, warehouseName, session.OpeningBalance, expectedCash, session.ClosingBalance, difference, session.OpenedAtUtc, session.ClosedAtUtc, session.Status, totals, movements.Select(item => new CashMovementDto(item.Id, item.PaymentMethod, item.Amount, item.IsIncome, item.Description, item.OccurredAtUtc)).ToList());
+        var openedAtUtc = DateTime.SpecifyKind(session.OpenedAtUtc, DateTimeKind.Utc);
+        DateTime? closedAtUtc = session.ClosedAtUtc.HasValue
+            ? DateTime.SpecifyKind(session.ClosedAtUtc.Value, DateTimeKind.Utc)
+            : null;
+        return new CashSessionDto(session.Id, session.WarehouseId, warehouseName, session.OpeningBalance, expectedCash, session.ClosingBalance, difference, openedAtUtc, closedAtUtc, session.Status, totals, movements.Select(item => new CashMovementDto(item.Id, item.PaymentMethod, item.Amount, item.IsIncome, item.Description, DateTime.SpecifyKind(item.OccurredAtUtc, DateTimeKind.Utc))).ToList());
     }
 }

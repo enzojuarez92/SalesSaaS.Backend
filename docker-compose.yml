@@ -22,6 +22,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      TZ: America/Argentina/Buenos_Aires
       Database__MigrateOnStartup: "true"
       ConnectionStrings__DefaultConnection: Server=sqlserver,1433;Database=SalesSaaS;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False
       Jwt__Key: ${Jwt__Key:?Definí Jwt__Key en .env}

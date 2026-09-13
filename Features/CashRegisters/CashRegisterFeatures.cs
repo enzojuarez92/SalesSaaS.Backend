@@ -93,10 +93,7 @@ public sealed class CloseCashRegisterSessionCommandHandler(ApplicationDbContext 
         var session = await context.CashRegisterSessions.SingleOrDefaultAsync(item => item.Id == request.CashRegisterSessionId && item.TenantId == request.TenantId, cancellationToken)
             ?? throw new InvalidOperationException("La sesión de caja no existe.");
         if (session.Status != "Open") throw new InvalidOperationException("La sesión de caja ya está cerrada.");
-        var cashNet = await context.CashMovements
-            .Where(item => item.CashRegisterSessionId == session.Id && item.PaymentMethod == PaymentMethod.Cash)
-            .SumAsync(item => item.IsIncome ? item.Amount : -item.Amount, cancellationToken);
-        var expectedCash = session.OpeningBalance + cashNet;
+        var expectedCash = await CashSessionMapper.GetExpectedCash(context, session, cancellationToken);
         session.ClosingBalance = request.ClosingBalance;
         session.ClosedAtUtc = DateTime.UtcNow;
         session.Status = "Closed";
@@ -130,17 +127,57 @@ public sealed class GetCashSessionHistoryQueryHandler(ApplicationDbContext conte
 
 internal static class CashSessionMapper
 {
+    private const string SaleDescriptionPrefix = "Venta ";
+    private const string SaleCancellationDescriptionPrefix = "Anulación de venta ";
+    private sealed record CashSale(Guid Id, decimal TotalAmount, DateTime OccurredAtUtc);
+
     internal static async Task<CashSessionDto> Map(ApplicationDbContext context, CashRegisterSession session, CancellationToken cancellationToken)
     {
         var warehouseName = await context.Warehouses.AsNoTracking().Where(item => item.Id == session.WarehouseId).Select(item => item.Name).SingleOrDefaultAsync(cancellationToken) ?? "Depósito";
-        var movements = await context.CashMovements.AsNoTracking().Where(item => item.CashRegisterSessionId == session.Id).OrderByDescending(item => item.OccurredAtUtc).ToListAsync(cancellationToken);
-        var totals = movements.GroupBy(item => item.PaymentMethod).Select(group => new CashPaymentTotalDto(group.Key, group.Where(item => item.IsIncome).Sum(item => item.Amount), group.Where(item => !item.IsIncome).Sum(item => item.Amount), group.Sum(item => item.IsIncome ? item.Amount : -item.Amount))).OrderBy(item => item.PaymentMethod).ToList();
-        var expectedCash = session.OpeningBalance + movements.Where(item => item.PaymentMethod == PaymentMethod.Cash).Sum(item => item.IsIncome ? item.Amount : -item.Amount);
+        var movements = await context.CashMovements.AsNoTracking().Where(item => item.CashRegisterSessionId == session.Id).ToListAsync(cancellationToken);
+        var cashSales = await GetCashSales(context, session, cancellationToken);
+
+        // Las ventas se consolidan desde las órdenes del turno. Así se recuperan
+        // ventas históricas que no tengan movimiento automático, sin duplicar las
+        // que ya fueron registradas por el POS.
+        var consolidatedMovements = movements
+            .Where(item => !IsAutomaticCashSale(item) && !IsCashSaleCancellation(item))
+            .Select(item => new CashMovementDto(item.Id, item.PaymentMethod, item.Amount, item.IsIncome, item.Description, DateTime.SpecifyKind(item.OccurredAtUtc, DateTimeKind.Utc)))
+            .Concat(cashSales.Select(sale => new CashMovementDto(sale.Id, PaymentMethod.Cash, sale.TotalAmount, true, $"Venta {sale.Id:N}", DateTime.SpecifyKind(sale.OccurredAtUtc, DateTimeKind.Utc))))
+            .OrderByDescending(item => item.OccurredAtUtc)
+            .ToList();
+        var totals = consolidatedMovements.GroupBy(item => item.PaymentMethod).Select(group => new CashPaymentTotalDto(group.Key, group.Where(item => item.IsIncome).Sum(item => item.Amount), group.Where(item => !item.IsIncome).Sum(item => item.Amount), group.Sum(item => item.IsIncome ? item.Amount : -item.Amount))).OrderBy(item => item.PaymentMethod).ToList();
+        var expectedCash = session.OpeningBalance + consolidatedMovements.Where(item => item.PaymentMethod == PaymentMethod.Cash).Sum(item => item.IsIncome ? item.Amount : -item.Amount);
         decimal? difference = session.ClosingBalance.HasValue ? session.ClosingBalance.Value - expectedCash : null;
         var openedAtUtc = DateTime.SpecifyKind(session.OpenedAtUtc, DateTimeKind.Utc);
         DateTime? closedAtUtc = session.ClosedAtUtc.HasValue
             ? DateTime.SpecifyKind(session.ClosedAtUtc.Value, DateTimeKind.Utc)
             : null;
-        return new CashSessionDto(session.Id, session.WarehouseId, warehouseName, session.OpeningBalance, expectedCash, session.ClosingBalance, difference, openedAtUtc, closedAtUtc, session.Status, totals, movements.Select(item => new CashMovementDto(item.Id, item.PaymentMethod, item.Amount, item.IsIncome, item.Description, DateTime.SpecifyKind(item.OccurredAtUtc, DateTimeKind.Utc))).ToList());
+        return new CashSessionDto(session.Id, session.WarehouseId, warehouseName, session.OpeningBalance, expectedCash, session.ClosingBalance, difference, openedAtUtc, closedAtUtc, session.Status, totals, consolidatedMovements);
     }
+
+    internal static async Task<decimal> GetExpectedCash(ApplicationDbContext context, CashRegisterSession session, CancellationToken cancellationToken)
+    {
+        var cashSales = await GetCashSales(context, session, cancellationToken);
+        var manualCashNet = await context.CashMovements.AsNoTracking()
+            .Where(item => item.CashRegisterSessionId == session.Id && item.PaymentMethod == PaymentMethod.Cash)
+            .Where(item => !item.Description.StartsWith(SaleDescriptionPrefix) && !item.Description.StartsWith(SaleCancellationDescriptionPrefix))
+            .SumAsync(item => (decimal?)(item.IsIncome ? item.Amount : -item.Amount), cancellationToken) ?? 0;
+        return session.OpeningBalance + manualCashNet + cashSales.Sum(sale => sale.TotalAmount);
+    }
+
+    private static Task<List<CashSale>> GetCashSales(ApplicationDbContext context, CashRegisterSession session, CancellationToken cancellationToken)
+    {
+        var endOfSession = session.ClosedAtUtc ?? DateTime.UtcNow;
+        return context.Orders.AsNoTracking()
+            .Where(order => order.TenantId == session.TenantId && order.WarehouseId == session.WarehouseId && order.PaymentMethod == PaymentMethod.Cash && order.Status != "Cancelled" && order.OrderDate >= session.OpenedAtUtc && order.OrderDate <= endOfSession)
+            .Select(order => new CashSale(order.Id, order.TotalAmount, order.OrderDate))
+            .ToListAsync(cancellationToken);
+    }
+
+    private static bool IsAutomaticCashSale(CashMovement movement) =>
+        movement.PaymentMethod == PaymentMethod.Cash && movement.IsIncome && movement.Description.StartsWith(SaleDescriptionPrefix, StringComparison.Ordinal);
+
+    private static bool IsCashSaleCancellation(CashMovement movement) =>
+        movement.PaymentMethod == PaymentMethod.Cash && !movement.IsIncome && movement.Description.StartsWith(SaleCancellationDescriptionPrefix, StringComparison.Ordinal);
 }

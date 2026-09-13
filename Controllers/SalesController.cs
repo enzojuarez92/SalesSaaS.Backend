@@ -16,14 +16,16 @@ namespace SalesSaaS.Controllers;
 public sealed class SalesController(IMediator mediator, ApplicationDbContext db, ICurrentUser currentUser) : ControllerBase
 {
     public sealed record SalesHistoryRow(Guid Id, DateTime Date, string ReceiptNumber, string Customer, string Seller, PaymentMethod PaymentMethod, decimal Total, string Status);
+    public sealed record SalesHistorySeller(Guid Id, string Name);
     public sealed record SaleDetailRow(Guid Id, DateTime Date, string ReceiptNumber, string Customer, string CustomerDocument, string Seller, PaymentMethod PaymentMethod, decimal Total, decimal Discount, string Status, IReadOnlyList<SaleItemRow> Items);
     public sealed record SaleItemRow(string Product, string Sku, int Quantity, decimal UnitPrice, decimal Subtotal);
 
     [HttpGet("history")]
-    public async Task<IReadOnlyList<SalesHistoryRow>> History([FromQuery] Guid tenantId, [FromQuery] Guid? warehouseId, [FromQuery] PaymentMethod? paymentMethod, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, CancellationToken ct)
+    public async Task<IReadOnlyList<SalesHistoryRow>> History([FromQuery] Guid tenantId, [FromQuery] Guid? warehouseId, [FromQuery] Guid? sellerId, [FromQuery] PaymentMethod? paymentMethod, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, CancellationToken ct)
     {
         var query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
         if (warehouseId.HasValue) query = query.Where(order => order.WarehouseId == warehouseId.Value);
+        if (sellerId.HasValue) query = query.Where(order => order.SellerId == sellerId.Value);
         if (paymentMethod.HasValue) query = query.Where(order => order.PaymentMethod == paymentMethod.Value);
         if (fromUtc.HasValue) query = query.Where(order => order.OrderDate >= fromUtc.Value);
         if (toUtc.HasValue) query = query.Where(order => order.OrderDate <= toUtc.Value);
@@ -35,6 +37,13 @@ public sealed class SalesController(IMediator mediator, ApplicationDbContext db,
                 order.PaymentMethod, order.TotalAmount, order.Status))
             .ToListAsync(ct);
     }
+
+    [HttpGet("history/sellers")]
+    public async Task<IReadOnlyList<SalesHistorySeller>> HistorySellers([FromQuery] Guid tenantId, CancellationToken ct) =>
+        await db.TenantMemberships.AsNoTracking().Where(membership => membership.TenantId == tenantId && membership.IsActive && membership.User!.IsActive)
+            .OrderBy(membership => membership.User!.FirstName).ThenBy(membership => membership.User!.LastName)
+            .Select(membership => new SalesHistorySeller(membership.UserId, (membership.User!.FirstName + " " + membership.User.LastName).Trim()))
+            .ToListAsync(ct);
 
     [HttpGet("history/{id:guid}")]
     public async Task<ActionResult<SaleDetailRow>> HistoryDetail(Guid id, [FromQuery] Guid tenantId, CancellationToken ct)

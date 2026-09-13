@@ -32,6 +32,14 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
 
     public async Task<Guid> Handle(CreateOrderCommand request, CancellationToken cancellationToken)
     {
+        var sellerId = _currentUser.UserId
+            ?? throw new UnauthorizedAccessException("No pudimos identificar al vendedor de la sesión actual.");
+        var sellerIsActive = await _context.TenantMemberships.AnyAsync(
+            membership => membership.TenantId == request.TenantId && membership.UserId == sellerId && membership.IsActive && membership.User!.IsActive,
+            cancellationToken);
+        if (!sellerIsActive)
+            throw new UnauthorizedAccessException("El usuario autenticado no tiene permiso activo para registrar ventas en este negocio.");
+
         var fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { request.CustomerId, request.WarehouseId, request.Items, request.DiscountAmount, request.PaymentMethod, request.QuoteId })));
         if (request.RequestId.HasValue)
         {
@@ -97,7 +105,7 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
             TenantId = request.TenantId,
             CustomerId = request.CustomerId,
             WarehouseId = request.WarehouseId,
-            SellerId = _currentUser.UserId,
+            SellerId = sellerId,
             OrderDate = DateTime.UtcNow,
             Status = "Completed",
             CreatedAt = DateTime.UtcNow

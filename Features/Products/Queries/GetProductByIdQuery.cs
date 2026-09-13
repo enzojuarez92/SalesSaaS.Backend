@@ -27,6 +27,7 @@ public class GetProductByIdQueryHandler : IRequestHandler<GetProductByIdQuery, P
                 p.Name,
                 p.CategoryId,
                 p.BrandId,
+                p.SupplierId,
                 p.Description,
                 p.Price,
                 p.Cost,

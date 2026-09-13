@@ -18,7 +18,8 @@ public record CreateProductCommand(
     Guid? CategoryId = null,
     Guid? BrandId = null,
     Guid? InitialWarehouseId = null,
-    decimal VatRate = 21m
+    decimal VatRate = 21m,
+    Guid? SupplierId = null
 ) : IRequest<Guid>, ITenantScopedRequest;
 
 public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand, Guid>
@@ -46,6 +47,8 @@ public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand,
             throw new InvalidOperationException("La categoría no existe o no está activa.");
         if (request.BrandId.HasValue && !await _context.Brands.AnyAsync(brand => brand.Id == request.BrandId && brand.TenantId == request.TenantId && brand.IsActive, cancellationToken))
             throw new InvalidOperationException("La marca no existe o no está activa.");
+        if (request.SupplierId.HasValue && !await _context.Suppliers.AnyAsync(supplier => supplier.Id == request.SupplierId && supplier.TenantId == request.TenantId && supplier.IsActive, cancellationToken))
+            throw new InvalidOperationException("El proveedor no existe o no está activo.");
         if (request.Stock > 0 && (!request.InitialWarehouseId.HasValue || !await _context.Warehouses.AnyAsync(warehouse => warehouse.Id == request.InitialWarehouseId && warehouse.TenantId == request.TenantId && warehouse.IsActive, cancellationToken)))
             throw new InvalidOperationException("Elegí un depósito activo para asignar el stock inicial.");
 
@@ -55,6 +58,7 @@ public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand,
             TenantId = request.TenantId,
             CategoryId = request.CategoryId,
             BrandId = request.BrandId,
+            SupplierId = request.SupplierId,
             Sku = request.Sku,
             Name = request.Name,
             Description = request.Description,

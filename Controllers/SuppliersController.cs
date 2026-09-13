@@ -13,8 +13,11 @@ public sealed class SuppliersController(IMediator mediator) : ControllerBase
 {
     [HttpPost]
     [Authorize(Roles = Roles.Administration)]
-    public async Task<IActionResult> Create(CreateSupplierCommand command) =>
-        Created($"/api/suppliers/{await mediator.Send(command)}", null);
+    public async Task<IActionResult> Create(CreateSupplierCommand command)
+    {
+        var id = await mediator.Send(command);
+        return Created($"/api/suppliers/{id}", new { id });
+    }
 
     [HttpPut("{supplierId:guid}")]
     [Authorize(Roles = Roles.Administration)]

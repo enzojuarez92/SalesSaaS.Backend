@@ -17,7 +17,8 @@ public record UpdateProductCommand(
     int MinimumStockAlert,
     Guid? CategoryId = null,
     Guid? BrandId = null,
-    decimal VatRate = 21m
+    decimal VatRate = 21m,
+    Guid? SupplierId = null
 ) : IRequest<bool>, ITenantScopedRequest;
 
 public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand, bool>
@@ -56,6 +57,8 @@ public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand,
             throw new InvalidOperationException("La categoría no existe o no está activa.");
         if (request.BrandId.HasValue && !await _context.Brands.AnyAsync(brand => brand.Id == request.BrandId && brand.TenantId == request.TenantId && brand.IsActive, cancellationToken))
             throw new InvalidOperationException("La marca no existe o no está activa.");
+        if (request.SupplierId.HasValue && !await _context.Suppliers.AnyAsync(supplier => supplier.Id == request.SupplierId && supplier.TenantId == request.TenantId && supplier.IsActive, cancellationToken))
+            throw new InvalidOperationException("El proveedor no existe o no está activo.");
 
         product.Sku = request.Sku;
         product.Name = request.Name;
@@ -67,6 +70,7 @@ public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand,
         product.MinimumStockAlert = request.MinimumStockAlert;
         product.CategoryId = request.CategoryId;
         product.BrandId = request.BrandId;
+        product.SupplierId = request.SupplierId;
 
         await _context.SaveChangesAsync(cancellationToken);
 

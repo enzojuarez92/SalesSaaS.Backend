@@ -202,6 +202,7 @@ public sealed class CreatePurchaseInvoiceCommandHandler(ApplicationDbContext con
         var invoice = new PurchaseInvoice { Id = Guid.NewGuid(), TenantId = request.TenantId, PurchaseOrderId = order.Id, SupplierId = order.SupplierId, Number = number, TotalAmount = order.TotalAmount };
         context.PurchaseInvoices.Add(invoice);
         context.SupplierAccountEntries.Add(new SupplierAccountEntry { Id = Guid.NewGuid(), TenantId = request.TenantId, SupplierId = order.SupplierId, PurchaseInvoiceId = invoice.Id, Amount = order.TotalAmount, IsDebit = false, Description = $"Factura de compra {number}" });
+        order.Status = "Invoiced";
         await context.SaveChangesAsync(cancellationToken);
         return invoice.Id;
     }

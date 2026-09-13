@@ -70,7 +70,7 @@ public class GetProductsQueryHandler : IRequestHandler<GetProductsQuery, PagedRe
         var query = products.Select(product => new
         {
             Product = product,
-            Stock = _context.StockMovements.Where(movement => movement.ProductId == product.Id).Sum(movement => (int?)movement.Quantity) ?? 0
+            Stock = _context.StockMovements.Where(movement => movement.ProductId == product.Id && (!request.WarehouseId.HasValue || movement.WarehouseId == request.WarehouseId)).Sum(movement => (int?)movement.Quantity) ?? 0
         });
         if (!string.IsNullOrWhiteSpace(request.StockStatus))
         {

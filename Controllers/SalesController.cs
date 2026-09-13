@@ -15,6 +15,38 @@ namespace SalesSaaS.Controllers;
 [Authorize(Roles = Roles.Sales)]
 public sealed class SalesController(IMediator mediator, ApplicationDbContext db, ICurrentUser currentUser) : ControllerBase
 {
+    public sealed record SalesHistoryRow(Guid Id, DateTime Date, string ReceiptNumber, string Customer, string Seller, PaymentMethod PaymentMethod, decimal Total, string Status);
+    public sealed record SaleDetailRow(Guid Id, DateTime Date, string ReceiptNumber, string Customer, string CustomerDocument, string Seller, PaymentMethod PaymentMethod, decimal Total, decimal Discount, string Status, IReadOnlyList<SaleItemRow> Items);
+    public sealed record SaleItemRow(string Product, string Sku, int Quantity, decimal UnitPrice, decimal Subtotal);
+
+    [HttpGet("history")]
+    public async Task<IReadOnlyList<SalesHistoryRow>> History([FromQuery] Guid tenantId, [FromQuery] Guid? warehouseId, [FromQuery] PaymentMethod? paymentMethod, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, CancellationToken ct)
+    {
+        var query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+        if (warehouseId.HasValue) query = query.Where(order => order.WarehouseId == warehouseId.Value);
+        if (paymentMethod.HasValue) query = query.Where(order => order.PaymentMethod == paymentMethod.Value);
+        if (fromUtc.HasValue) query = query.Where(order => order.OrderDate >= fromUtc.Value);
+        if (toUtc.HasValue) query = query.Where(order => order.OrderDate <= toUtc.Value);
+        return await query.OrderByDescending(order => order.OrderDate).Take(250)
+            .Select(order => new SalesHistoryRow(order.Id, order.OrderDate,
+                db.Invoices.Where(invoice => invoice.OrderId == order.Id).OrderByDescending(invoice => invoice.IssuedAtUtc).Select(invoice => invoice.Number).FirstOrDefault() ?? $"POS-{order.Id:N}",
+                order.Customer!.Name,
+                order.Seller == null ? "Sin registrar" : order.Seller.FirstName + " " + order.Seller.LastName,
+                order.PaymentMethod, order.TotalAmount, order.Status))
+            .ToListAsync(ct);
+    }
+
+    [HttpGet("history/{id:guid}")]
+    public async Task<ActionResult<SaleDetailRow>> HistoryDetail(Guid id, [FromQuery] Guid tenantId, CancellationToken ct)
+    {
+        var order = await db.Orders.AsNoTracking().Include(item => item.Customer).Include(item => item.Seller).Include(item => item.Items).ThenInclude(item => item.Product)
+            .SingleOrDefaultAsync(item => item.Id == id && item.TenantId == tenantId, ct);
+        if (order is null) return NotFound();
+        var receipt = await db.Invoices.AsNoTracking().Where(invoice => invoice.OrderId == id).OrderByDescending(invoice => invoice.IssuedAtUtc).Select(invoice => invoice.Number).FirstOrDefaultAsync(ct) ?? $"POS-{order.Id:N}";
+        return new SaleDetailRow(order.Id, order.OrderDate, receipt, order.Customer!.Name, $"{order.Customer.DocumentType} {order.Customer.DocumentNumber}".Trim(), order.Seller == null ? "Sin registrar" : $"{order.Seller.FirstName} {order.Seller.LastName}", order.PaymentMethod, order.TotalAmount, order.DiscountAmount, order.Status,
+            order.Items.Select(item => new SaleItemRow(item.Product?.Name ?? "Producto eliminado", item.Product?.Sku ?? "—", item.Quantity, item.UnitPrice, item.SubTotal)).ToList());
+    }
+
     [HttpGet("quotes")]
     public async Task<IActionResult> Quotes(CancellationToken ct) => Ok(await db.Quotes.AsNoTracking().OrderByDescending(q => q.CreatedAtUtc).Take(100)
         .Select(q => new { q.Id, q.CustomerId, Customer = q.Customer!.Name, q.TotalAmount, q.ExpiresAtUtc, q.Status, Items = q.Items.Select(i => new { i.ProductId, i.Quantity }) }).ToListAsync(ct));

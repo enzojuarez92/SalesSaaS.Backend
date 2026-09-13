@@ -16,6 +16,9 @@ public class Order
     [Required]
     public Guid CustomerId { get; set; }
     public Guid WarehouseId { get; set; }
+    // Quién confirmó la venta. Se persiste para que el historial no dependa
+    // de interpretar registros de auditoría.
+    public Guid? SellerId { get; set; }
 
     public DateTime OrderDate { get; set; } = DateTime.UtcNow;
 
@@ -38,6 +41,7 @@ public class Order
     [ForeignKey(nameof(CustomerId))]
     public virtual Customer? Customer { get; set; }
     public Warehouse? Warehouse { get; set; }
+    public User? Seller { get; set; }
 
     public virtual ICollection<OrderItem> Items { get; set; } = new List<OrderItem>();
 }

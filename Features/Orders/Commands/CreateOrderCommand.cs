@@ -22,10 +22,12 @@ public record CreateOrderCommand(
 public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Guid>
 {
     private readonly ApplicationDbContext _context;
+    private readonly ICurrentUser _currentUser;
 
-    public CreateOrderCommandHandler(ApplicationDbContext context)
+    public CreateOrderCommandHandler(ApplicationDbContext context, ICurrentUser currentUser)
     {
         _context = context;
+        _currentUser = currentUser;
     }
 
     public async Task<Guid> Handle(CreateOrderCommand request, CancellationToken cancellationToken)
@@ -95,6 +97,7 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
             TenantId = request.TenantId,
             CustomerId = request.CustomerId,
             WarehouseId = request.WarehouseId,
+            SellerId = _currentUser.UserId,
             OrderDate = DateTime.UtcNow,
             Status = "Completed",
             CreatedAt = DateTime.UtcNow

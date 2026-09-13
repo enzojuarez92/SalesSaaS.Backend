@@ -16,25 +16,44 @@ namespace SalesSaaS.Controllers;
 public sealed class SalesController(IMediator mediator, ApplicationDbContext db, ICurrentUser currentUser) : ControllerBase
 {
     public sealed record SalesHistoryRow(Guid Id, DateTime Date, string ReceiptNumber, string Customer, string Seller, PaymentMethod PaymentMethod, decimal Total, string Status);
+    public sealed record SalesHistoryPaymentTotal(PaymentMethod PaymentMethod, decimal Total);
     public sealed record SalesHistorySeller(Guid Id, string Name);
     public sealed record SaleDetailRow(Guid Id, DateTime Date, string ReceiptNumber, string Customer, string CustomerDocument, string Seller, PaymentMethod PaymentMethod, decimal Total, decimal Discount, string Status, IReadOnlyList<SaleItemRow> Items);
     public sealed record SaleItemRow(string Product, string Sku, int Quantity, decimal UnitPrice, decimal Subtotal);
 
     [HttpGet("history")]
-    public async Task<IReadOnlyList<SalesHistoryRow>> History([FromQuery] Guid tenantId, [FromQuery] Guid? warehouseId, [FromQuery] Guid? sellerId, [FromQuery] PaymentMethod? paymentMethod, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, CancellationToken ct)
+    public async Task<PagedResult<SalesHistoryRow>> History([FromQuery] Guid tenantId, [FromQuery] Guid? warehouseId, [FromQuery] Guid? sellerId, [FromQuery] PaymentMethod? paymentMethod, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
     {
+        pageNumber = Math.Max(1, pageNumber);
+        pageSize = Math.Clamp(pageSize, 1, 100);
         var query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
         if (warehouseId.HasValue) query = query.Where(order => order.WarehouseId == warehouseId.Value);
         if (sellerId.HasValue) query = query.Where(order => order.SellerId == sellerId.Value);
         if (paymentMethod.HasValue) query = query.Where(order => order.PaymentMethod == paymentMethod.Value);
         if (fromUtc.HasValue) query = query.Where(order => order.OrderDate >= fromUtc.Value);
         if (toUtc.HasValue) query = query.Where(order => order.OrderDate <= toUtc.Value);
-        return await query.OrderByDescending(order => order.OrderDate).Take(250)
+        var totalCount = await query.CountAsync(ct);
+        var items = await query.OrderByDescending(order => order.OrderDate).Skip((pageNumber - 1) * pageSize).Take(pageSize)
             .Select(order => new SalesHistoryRow(order.Id, order.OrderDate,
                 db.Invoices.Where(invoice => invoice.OrderId == order.Id).OrderByDescending(invoice => invoice.IssuedAtUtc).Select(invoice => invoice.Number).FirstOrDefault() ?? $"POS-{order.Id:N}",
                 order.Customer!.Name,
                 order.Seller == null ? "Sin registrar" : order.Seller.FirstName + " " + order.Seller.LastName,
                 order.PaymentMethod, order.TotalAmount, order.Status))
+            .ToListAsync(ct);
+        return new PagedResult<SalesHistoryRow>(items, totalCount, pageNumber, pageSize);
+    }
+
+    [HttpGet("history/totals")]
+    public async Task<IReadOnlyList<SalesHistoryPaymentTotal>> HistoryTotals([FromQuery] Guid tenantId, [FromQuery] Guid? warehouseId, [FromQuery] Guid? sellerId, [FromQuery] PaymentMethod? paymentMethod, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, CancellationToken ct = default)
+    {
+        var query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId && order.Status != "Cancelled");
+        if (warehouseId.HasValue) query = query.Where(order => order.WarehouseId == warehouseId.Value);
+        if (sellerId.HasValue) query = query.Where(order => order.SellerId == sellerId.Value);
+        if (paymentMethod.HasValue) query = query.Where(order => order.PaymentMethod == paymentMethod.Value);
+        if (fromUtc.HasValue) query = query.Where(order => order.OrderDate >= fromUtc.Value);
+        if (toUtc.HasValue) query = query.Where(order => order.OrderDate <= toUtc.Value);
+        return await query.GroupBy(order => order.PaymentMethod)
+            .Select(group => new SalesHistoryPaymentTotal(group.Key, group.Sum(order => order.TotalAmount)))
             .ToListAsync(ct);
     }
 

@@ -96,7 +96,8 @@ public class GetCustomersQueryHandler : IRequestHandler<GetCustomersQuery, Paged
                 item.Customer.CreditLimit,
                 item.Balance,
                 item.Customer.AllowCredit,
-                item.Customer.IsActive
+                item.Customer.IsActive,
+                Math.Max(0, item.Customer.CreditLimit - item.Balance)
             ))
             .ToListAsync(cancellationToken);
 

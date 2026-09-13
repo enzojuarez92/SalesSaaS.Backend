@@ -10,8 +10,8 @@ using SalesSaaS.Infrastructure;
 
 namespace SalesSaaS.Controllers;
 
-public sealed record BusinessSettingsDto(Guid TenantId, [Required, StringLength(150)] string Name, [StringLength(150)] string? LegalName, [Required, RegularExpression(@"^[0-9]{11}$")] string TaxId, [StringLength(80)] string? TaxCondition, [StringLength(300)] string? Address, [StringLength(30)] string? Phone, [StringLength(2000), Url] string? LogoUrl);
-public sealed record UpdateBusinessSettingsRequest(Guid TenantId, [Required, StringLength(150)] string Name, [StringLength(150)] string? LegalName, [Required, RegularExpression(@"^[0-9]{11}$")] string TaxId, [StringLength(80)] string? TaxCondition, [StringLength(300)] string? Address, [StringLength(30)] string? Phone, [StringLength(2000), Url] string? LogoUrl);
+public sealed record BusinessSettingsDto(Guid TenantId, [Required, StringLength(150)] string Name, [StringLength(150)] string? LegalName, [Required, RegularExpression(@"^[0-9]{11}$")] string TaxId, [StringLength(80)] string? TaxCondition, [StringLength(300)] string? Address, [StringLength(30)] string? Phone, [StringLength(2000), Url] string? LogoUrl, string PrintFormat);
+public sealed record UpdateBusinessSettingsRequest(Guid TenantId, [Required, StringLength(150)] string Name, [StringLength(150)] string? LegalName, [Required, RegularExpression(@"^[0-9]{11}$")] string TaxId, [StringLength(80)] string? TaxCondition, [StringLength(300)] string? Address, [StringLength(30)] string? Phone, [StringLength(2000), Url] string? LogoUrl, [RegularExpression("^(a4|thermal-80|thermal-58)$")] string PrintFormat = "a4");
 public sealed record TenantUserDto(Guid Id, string FirstName, string LastName, string Email, string Role, bool IsActive, IReadOnlyList<Guid> WarehouseIds);
 public sealed record UpdateTenantUserRequest(Guid Id, Guid TenantId, [Required, StringLength(100)] string FirstName, [Required, StringLength(100)] string LastName, [Required, RegularExpression("^(Owner|Admin|Seller|Warehouse)$")] string Role, IReadOnlyList<Guid>? WarehouseIds = null);
 public sealed record ToggleTenantUserRequest(Guid TenantId, bool IsActive);
@@ -23,9 +23,9 @@ public sealed record UpdateUserWarehousesRequest(Guid TenantId, IReadOnlyList<Gu
 public sealed class SettingsController(ApplicationDbContext context, ISender sender) : ControllerBase
 {
     [HttpGet("business")]
-    public async Task<BusinessSettingsDto> Business([FromQuery] Guid tenantId) { var t = await context.Tenants.SingleAsync(x => x.Id == tenantId); return new(t.Id,t.Name,t.LegalName,t.TaxId,t.TaxCondition,t.Address,t.Phone,t.LogoUrl); }
+    public async Task<BusinessSettingsDto> Business([FromQuery] Guid tenantId) { var t = await context.Tenants.SingleAsync(x => x.Id == tenantId); return new(t.Id,t.Name,t.LegalName,t.TaxId,t.TaxCondition,t.Address,t.Phone,t.LogoUrl,t.PrintFormat); }
     [HttpPut("business")]
-    public async Task<BusinessSettingsDto> UpdateBusiness(UpdateBusinessSettingsRequest request) { if (!SalesSaaS.Application.Validation.ArgentineTaxId.IsValid(request.TaxId)) throw new InvalidOperationException("El CUIT no es válido."); var t=await context.Tenants.SingleAsync(x=>x.Id==request.TenantId); t.Name=request.Name.Trim(); t.LegalName=request.LegalName?.Trim(); t.TaxId=request.TaxId.Trim(); t.TaxCondition=request.TaxCondition?.Trim(); t.Address=request.Address?.Trim(); t.Phone=request.Phone?.Trim(); t.LogoUrl=request.LogoUrl?.Trim(); await context.SaveChangesAsync(); return new(t.Id,t.Name,t.LegalName,t.TaxId,t.TaxCondition,t.Address,t.Phone,t.LogoUrl); }
+    public async Task<BusinessSettingsDto> UpdateBusiness(UpdateBusinessSettingsRequest request) { if (!SalesSaaS.Application.Validation.ArgentineTaxId.IsValid(request.TaxId)) throw new InvalidOperationException("El CUIT no es válido."); var t=await context.Tenants.SingleAsync(x=>x.Id==request.TenantId); t.Name=request.Name.Trim(); t.LegalName=request.LegalName?.Trim(); t.TaxId=request.TaxId.Trim(); t.TaxCondition=request.TaxCondition?.Trim(); t.Address=request.Address?.Trim(); t.Phone=request.Phone?.Trim(); t.LogoUrl=request.LogoUrl?.Trim(); t.PrintFormat=request.PrintFormat; await context.SaveChangesAsync(); return new(t.Id,t.Name,t.LegalName,t.TaxId,t.TaxCondition,t.Address,t.Phone,t.LogoUrl,t.PrintFormat); }
     [HttpPost("afip-cert")]
     public async Task<IActionResult> AfipCert(ConfigureTenantFiscalProfileCommand command) => Ok(new { id = await sender.Send(command) });
 

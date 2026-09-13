@@ -19,6 +19,9 @@ namespace SalesSaaS.Domain
         public string? Address { get; set; }
         public string? Phone { get; set; }
         public string? LogoUrl { get; set; }
+        [Required]
+        [StringLength(20)]
+        public string PrintFormat { get; set; } = "a4";
         public string? BusinessCategory { get; set; }
 
         public bool IsActive { get; set; } = true;

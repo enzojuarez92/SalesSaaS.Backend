@@ -17,6 +17,8 @@ public sealed record SupplierAccountEntryDto(Guid Id, Guid? PurchaseInvoiceId, d
 public sealed record PurchaseOrderItemRequest(Guid ProductId, int Quantity, decimal UnitCost);
 public sealed record CreatePurchaseOrderCommand(Guid TenantId, Guid SupplierId, Guid WarehouseId, List<PurchaseOrderItemRequest> Items) : IRequest<Guid>, ITenantScopedRequest;
 public sealed record ReceivePurchaseOrderCommand(Guid TenantId, Guid PurchaseOrderId) : IRequest, ITenantScopedRequest;
+public sealed record AuthorizePurchaseOrderCommand(Guid TenantId, Guid PurchaseOrderId) : IRequest, ITenantScopedRequest;
+public sealed record CancelPurchaseOrderCommand(Guid TenantId, Guid PurchaseOrderId) : IRequest, ITenantScopedRequest;
 public sealed record CreatePurchaseInvoiceCommand(Guid TenantId, Guid PurchaseOrderId, string Number) : IRequest<Guid>, ITenantScopedRequest;
 
 public sealed class CreateSupplierCommandValidator : AbstractValidator<CreateSupplierCommand>
@@ -104,17 +106,21 @@ public sealed class GetSupplierAccountQueryHandler(ApplicationDbContext context)
             .Select(item => new SupplierAccountEntryDto(item.Id, item.PurchaseInvoiceId, item.Amount, item.IsDebit, item.Description, item.OccurredAtUtc)).ToListAsync(cancellationToken);
 }
 
-public sealed class CreatePurchaseOrderCommandHandler(ApplicationDbContext context) : IRequestHandler<CreatePurchaseOrderCommand, Guid>
+public sealed class CreatePurchaseOrderCommandHandler(ApplicationDbContext context, ICurrentUser currentUser) : IRequestHandler<CreatePurchaseOrderCommand, Guid>
 {
     public async Task<Guid> Handle(CreatePurchaseOrderCommand request, CancellationToken cancellationToken)
     {
+        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("No pudimos identificar al usuario que crea la orden.");
+        var role = await context.TenantMemberships.Where(item => item.TenantId == request.TenantId && item.UserId == userId && item.IsActive && item.User!.IsActive).Select(item => item.Role).SingleOrDefaultAsync(cancellationToken)
+            ?? throw new UnauthorizedAccessException("El usuario no tiene una membresía activa en este negocio.");
+        var status = role is Roles.Owner or Roles.Admin ? "PendingReceipt" : "PendingAuthorization";
         if (!await context.Suppliers.AnyAsync(item => item.Id == request.SupplierId && item.TenantId == request.TenantId && item.IsActive, cancellationToken)) throw new InvalidOperationException("El proveedor no existe o no está activo.");
         if (!await context.Warehouses.AnyAsync(item => item.Id == request.WarehouseId && item.TenantId == request.TenantId && item.IsActive, cancellationToken)) throw new InvalidOperationException("El depósito no existe o no está activo.");
         var productIds = request.Items.Select(item => item.ProductId).Distinct().ToList();
         var productCount = await context.Products.CountAsync(item => item.TenantId == request.TenantId && item.IsActive && productIds.Contains(item.Id), cancellationToken);
         if (productCount != productIds.Count) throw new InvalidOperationException("Uno o más productos no existen o no están activos.");
 
-        var order = new PurchaseOrder { Id = Guid.NewGuid(), TenantId = request.TenantId, SupplierId = request.SupplierId, WarehouseId = request.WarehouseId };
+        var order = new PurchaseOrder { Id = Guid.NewGuid(), TenantId = request.TenantId, SupplierId = request.SupplierId, WarehouseId = request.WarehouseId, CreatedByUserId = userId, Status = status };
         foreach (var line in request.Items)
         {
             var total = line.Quantity * line.UnitCost;
@@ -133,7 +139,7 @@ public sealed class ReceivePurchaseOrderCommandHandler(ApplicationDbContext cont
     {
         var order = await context.PurchaseOrders.Include(item => item.Items).SingleOrDefaultAsync(item => item.Id == request.PurchaseOrderId && item.TenantId == request.TenantId, cancellationToken)
             ?? throw new InvalidOperationException("La orden de compra no existe.");
-        if (order.Status != "Draft") throw new InvalidOperationException("La orden de compra no se encuentra pendiente de recepción.");
+        if (order.Status is not ("PendingReceipt" or "Draft")) throw new InvalidOperationException("La orden de compra no se encuentra pendiente de recepción.");
 
         var productIds = order.Items.Select(item => item.ProductId).Distinct().ToList();
         var products = await context.Products.Where(item => item.TenantId == request.TenantId && item.IsActive && productIds.Contains(item.Id)).ToDictionaryAsync(item => item.Id, cancellationToken);
@@ -146,6 +152,38 @@ public sealed class ReceivePurchaseOrderCommandHandler(ApplicationDbContext cont
             context.StockMovements.Add(new StockMovement { Id = Guid.NewGuid(), TenantId = request.TenantId, ProductId = product.Id, WarehouseId = order.WarehouseId, Type = StockMovementType.Receipt, Quantity = line.Quantity, Reason = "Recepción de compra", Reference = order.Id.ToString("N") });
         }
         order.Status = "Received";
+        await context.SaveChangesAsync(cancellationToken);
+    }
+}
+
+public sealed class AuthorizePurchaseOrderCommandHandler(ApplicationDbContext context, ICurrentUser currentUser) : IRequestHandler<AuthorizePurchaseOrderCommand>
+{
+    public async Task Handle(AuthorizePurchaseOrderCommand request, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("No pudimos identificar al usuario.");
+        var canAuthorize = await context.TenantMemberships.AnyAsync(item => item.TenantId == request.TenantId && item.UserId == userId && item.IsActive && item.User!.IsActive && (item.Role == Roles.Owner || item.Role == Roles.Admin), cancellationToken);
+        if (!canAuthorize) throw new UnauthorizedAccessException("Sólo un administrador puede autorizar órdenes de compra.");
+        var order = await context.PurchaseOrders.SingleOrDefaultAsync(item => item.Id == request.PurchaseOrderId && item.TenantId == request.TenantId, cancellationToken)
+            ?? throw new InvalidOperationException("La orden de compra no existe.");
+        if (order.Status != "PendingAuthorization") throw new InvalidOperationException("La orden no está pendiente de autorización.");
+        order.Status = "PendingReceipt";
+        await context.SaveChangesAsync(cancellationToken);
+    }
+}
+
+public sealed class CancelPurchaseOrderCommandHandler(ApplicationDbContext context, ICurrentUser currentUser) : IRequestHandler<CancelPurchaseOrderCommand>
+{
+    public async Task Handle(CancelPurchaseOrderCommand request, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("No pudimos identificar al usuario.");
+        var role = await context.TenantMemberships.Where(item => item.TenantId == request.TenantId && item.UserId == userId && item.IsActive && item.User!.IsActive).Select(item => item.Role).SingleOrDefaultAsync(cancellationToken)
+            ?? throw new UnauthorizedAccessException("El usuario no tiene una membresía activa en este negocio.");
+        var order = await context.PurchaseOrders.SingleOrDefaultAsync(item => item.Id == request.PurchaseOrderId && item.TenantId == request.TenantId, cancellationToken)
+            ?? throw new InvalidOperationException("La orden de compra no existe.");
+        if (order.Status != "PendingAuthorization") throw new InvalidOperationException("Sólo se pueden anular órdenes pendientes de autorización.");
+        if (role is not (Roles.Owner or Roles.Admin) && order.CreatedByUserId != userId)
+            throw new UnauthorizedAccessException("Sólo podés anular tus propias órdenes pendientes de autorización.");
+        order.Status = "Cancelled";
         await context.SaveChangesAsync(cancellationToken);
     }
 }

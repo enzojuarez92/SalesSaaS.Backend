@@ -5,7 +5,8 @@ public sealed class PurchaseOrder
     public Guid TenantId { get; set; }
     public Guid SupplierId { get; set; }
     public Guid WarehouseId { get; set; }
-    public string Status { get; set; } = "Draft";
+    public Guid? CreatedByUserId { get; set; }
+    public string Status { get; set; } = "PendingReceipt";
     public decimal TotalAmount { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public ICollection<PurchaseOrderItem> Items { get; set; } = new List<PurchaseOrderItem>();

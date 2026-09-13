@@ -16,7 +16,8 @@ public sealed record SupplierDto(Guid Id, string LegalName, string TaxId, string
 public sealed record SupplierAccountEntryDto(Guid Id, Guid? PurchaseInvoiceId, decimal Amount, bool IsDebit, string Description, DateTime OccurredAtUtc);
 public sealed record PurchaseOrderItemRequest(Guid ProductId, int Quantity, decimal UnitCost);
 public sealed record CreatePurchaseOrderCommand(Guid TenantId, Guid SupplierId, Guid WarehouseId, List<PurchaseOrderItemRequest> Items) : IRequest<Guid>, ITenantScopedRequest;
-public sealed record ReceivePurchaseOrderCommand(Guid TenantId, Guid PurchaseOrderId) : IRequest, ITenantScopedRequest;
+public sealed record ReceivePurchaseOrderItemRequest(Guid ProductId, int ReceivedQuantity, decimal UnitCost);
+public sealed record ReceivePurchaseOrderCommand(Guid TenantId, Guid PurchaseOrderId, List<ReceivePurchaseOrderItemRequest> Items) : IRequest, ITenantScopedRequest;
 public sealed record AuthorizePurchaseOrderCommand(Guid TenantId, Guid PurchaseOrderId) : IRequest, ITenantScopedRequest;
 public sealed record CancelPurchaseOrderCommand(Guid TenantId, Guid PurchaseOrderId) : IRequest, ITenantScopedRequest;
 public sealed record CreatePurchaseInvoiceCommand(Guid TenantId, Guid PurchaseOrderId, string Number) : IRequest<Guid>, ITenantScopedRequest;
@@ -59,6 +60,22 @@ public sealed class CreatePurchaseInvoiceCommandValidator : AbstractValidator<Cr
         RuleFor(command => command.TenantId).NotEmpty().WithMessage("El negocio es obligatorio.");
         RuleFor(command => command.PurchaseOrderId).NotEmpty().WithMessage("La orden de compra es obligatoria.");
         RuleFor(command => command.Number).NotEmpty().MaximumLength(50).WithMessage("El número de factura es obligatorio y no puede superar los 50 caracteres.");
+    }
+}
+
+public sealed class ReceivePurchaseOrderCommandValidator : AbstractValidator<ReceivePurchaseOrderCommand>
+{
+    public ReceivePurchaseOrderCommandValidator()
+    {
+        RuleFor(command => command.TenantId).NotEmpty().WithMessage("El negocio es obligatorio.");
+        RuleFor(command => command.PurchaseOrderId).NotEmpty().WithMessage("La orden de compra es obligatoria.");
+        RuleFor(command => command.Items).NotEmpty().WithMessage("La recepción debe incluir los productos de la orden.");
+        RuleForEach(command => command.Items).ChildRules(item =>
+        {
+            item.RuleFor(line => line.ProductId).NotEmpty().WithMessage("El producto es obligatorio.");
+            item.RuleFor(line => line.ReceivedQuantity).GreaterThanOrEqualTo(0).WithMessage("La cantidad recibida no puede ser negativa.");
+            item.RuleFor(line => line.UnitCost).GreaterThanOrEqualTo(0).WithMessage("El costo unitario no puede ser negativo.");
+        });
     }
 }
 
@@ -141,15 +158,29 @@ public sealed class ReceivePurchaseOrderCommandHandler(ApplicationDbContext cont
             ?? throw new InvalidOperationException("La orden de compra no existe.");
         if (order.Status is not ("PendingReceipt" or "Draft")) throw new InvalidOperationException("La orden de compra no se encuentra pendiente de recepción.");
 
+        if (request.Items.Select(item => item.ProductId).Distinct().Count() != request.Items.Count)
+            throw new InvalidOperationException("La recepción no puede incluir productos repetidos.");
+        var receivedLines = request.Items.ToDictionary(item => item.ProductId);
+        if (receivedLines.Count != order.Items.Count || order.Items.Any(item => !receivedLines.ContainsKey(item.ProductId)))
+            throw new InvalidOperationException("La recepción debe incluir exactamente los productos de la orden.");
+
         var productIds = order.Items.Select(item => item.ProductId).Distinct().ToList();
         var products = await context.Products.Where(item => item.TenantId == request.TenantId && item.IsActive && productIds.Contains(item.Id)).ToDictionaryAsync(item => item.Id, cancellationToken);
         if (products.Count != productIds.Count) throw new InvalidOperationException("Uno o más productos de la orden no están disponibles.");
 
+        order.TotalAmount = 0;
         foreach (var line in order.Items)
         {
+            var received = receivedLines[line.ProductId];
             var product = products[line.ProductId];
+            line.Quantity = received.ReceivedQuantity;
+            line.UnitCost = received.UnitCost;
+            line.TotalAmount = line.Quantity * line.UnitCost;
+            order.TotalAmount += line.TotalAmount;
             product.Stock += line.Quantity;
-            context.StockMovements.Add(new StockMovement { Id = Guid.NewGuid(), TenantId = request.TenantId, ProductId = product.Id, WarehouseId = order.WarehouseId, Type = StockMovementType.Receipt, Quantity = line.Quantity, Reason = "Recepción de compra", Reference = order.Id.ToString("N") });
+            product.Cost = line.UnitCost;
+            if (line.Quantity > 0)
+                context.StockMovements.Add(new StockMovement { Id = Guid.NewGuid(), TenantId = request.TenantId, ProductId = product.Id, WarehouseId = order.WarehouseId, Type = StockMovementType.Receipt, Quantity = line.Quantity, Reason = "Recepción de compra", Reference = order.Id.ToString("N") });
         }
         order.Status = "Received";
         await context.SaveChangesAsync(cancellationToken);

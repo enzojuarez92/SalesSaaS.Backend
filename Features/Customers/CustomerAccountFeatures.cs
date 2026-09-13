@@ -52,6 +52,8 @@ public sealed class RecordCustomerPaymentCommandHandler(ApplicationDbContext con
             .Where(session => session.TenantId == request.TenantId && session.WarehouseId == request.WarehouseId && session.Status == "Open")
             .OrderByDescending(session => session.OpenedAtUtc).FirstOrDefaultAsync(cancellationToken);
         if (activeCashSession is null) throw new InvalidOperationException("No hay una caja abierta en el depósito seleccionado para registrar el cobro.");
+        if (activeCashSession.OpenedAtUtc.ToLocalTime().Date < DateTime.Today)
+            throw new InvalidOperationException("SESSION_EXPIRED_PREVIOUS_DAY: La caja abierta corresponde a un día anterior y debe cerrarse antes de registrar cobros.");
         context.CashMovements.Add(new CashMovement { Id = Guid.NewGuid(), TenantId = request.TenantId, CashRegisterSessionId = activeCashSession.Id, PaymentMethod = PaymentMethod.Cash, Amount = request.Amount, IsIncome = true, Description = $"Cobro cuenta corriente: {entry.Description}" });
         await context.SaveChangesAsync(cancellationToken);
         return entry.Id;

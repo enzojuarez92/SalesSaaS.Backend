@@ -53,7 +53,16 @@ public sealed class OpenCashRegisterSessionCommandHandler(ApplicationDbContext c
     public async Task<Guid> Handle(OpenCashRegisterSessionCommand request, CancellationToken cancellationToken)
     {
         if (!await context.Warehouses.AnyAsync(item => item.Id == request.WarehouseId && item.TenantId == request.TenantId && item.IsActive, cancellationToken)) throw new InvalidOperationException("El depósito no existe o no está activo.");
-        if (await context.CashRegisterSessions.AnyAsync(item => item.TenantId == request.TenantId && item.WarehouseId == request.WarehouseId && item.Status == "Open", cancellationToken)) throw new InvalidOperationException("Ya existe una sesión de caja abierta para este depósito.");
+        var activeSession = await context.CashRegisterSessions
+            .Where(item => item.TenantId == request.TenantId && item.WarehouseId == request.WarehouseId && item.Status == "Open")
+            .OrderByDescending(item => item.OpenedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (activeSession is not null)
+        {
+            if (activeSession.OpenedAtUtc.ToLocalTime().Date < DateTime.Today)
+                throw new InvalidOperationException("SESSION_EXPIRED_PREVIOUS_DAY: Existe una caja pendiente de cierre de un día anterior. Realizá el arqueo y cierre antes de abrir un nuevo turno.");
+            throw new InvalidOperationException("Ya existe una sesión de caja abierta para este depósito.");
+        }
         var session = new CashRegisterSession { Id = Guid.NewGuid(), TenantId = request.TenantId, WarehouseId = request.WarehouseId, OpeningBalance = request.OpeningBalance };
         context.CashRegisterSessions.Add(session);
         await context.SaveChangesAsync(cancellationToken);
@@ -68,6 +77,8 @@ public sealed class RecordCashMovementCommandHandler(ApplicationDbContext contex
         var session = await context.CashRegisterSessions.SingleOrDefaultAsync(item => item.Id == request.CashRegisterSessionId && item.TenantId == request.TenantId, cancellationToken)
             ?? throw new InvalidOperationException("La sesión de caja no existe.");
         if (session.Status != "Open") throw new InvalidOperationException("No se pueden registrar movimientos en una caja cerrada.");
+        if (session.OpenedAtUtc.ToLocalTime().Date < DateTime.Today)
+            throw new InvalidOperationException("SESSION_EXPIRED_PREVIOUS_DAY: La caja corresponde a un día anterior y debe cerrarse antes de registrar movimientos.");
         var movement = new CashMovement { Id = Guid.NewGuid(), TenantId = request.TenantId, CashRegisterSessionId = session.Id, PaymentMethod = request.PaymentMethod, Amount = request.Amount, IsIncome = request.IsIncome, Description = request.Description.Trim() };
         context.CashMovements.Add(movement);
         await context.SaveChangesAsync(cancellationToken);

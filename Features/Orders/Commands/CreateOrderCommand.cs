@@ -86,6 +86,8 @@ public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Gui
             .FirstOrDefaultAsync(cancellationToken);
         if (activeCashSession is null)
             throw new InvalidOperationException("No se puede procesar la venta porque no hay una caja abierta para hoy.");
+        if (activeCashSession.OpenedAtUtc.ToLocalTime().Date < DateTime.Today)
+            throw new InvalidOperationException("SESSION_EXPIRED_PREVIOUS_DAY: La caja abierta corresponde a un día anterior. Realizá el arqueo y cierre antes de registrar una venta.");
 
         // 2. Cargar los productos de la BD para verificar precios y stock
         var productIds = request.Items.Select(i => i.ProductId).ToList();

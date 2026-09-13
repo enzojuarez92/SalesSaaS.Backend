@@ -16,7 +16,7 @@ public sealed record SupplierDto(Guid Id, string LegalName, string TaxId, string
 public sealed record SupplierAccountEntryDto(Guid Id, Guid? PurchaseInvoiceId, decimal Amount, bool IsDebit, string Description, DateTime OccurredAtUtc);
 public sealed record PurchaseOrderItemRequest(Guid ProductId, int Quantity, decimal UnitCost);
 public sealed record CreatePurchaseOrderCommand(Guid TenantId, Guid SupplierId, Guid WarehouseId, List<PurchaseOrderItemRequest> Items) : IRequest<Guid>, ITenantScopedRequest;
-public sealed record ReceivePurchaseOrderItemRequest(Guid ProductId, int ReceivedQuantity, decimal UnitCost);
+public sealed record ReceivePurchaseOrderItemRequest(Guid ProductId, int ReceivedQuantity);
 public sealed record ReceivePurchaseOrderCommand(Guid TenantId, Guid PurchaseOrderId, List<ReceivePurchaseOrderItemRequest> Items) : IRequest, ITenantScopedRequest;
 public sealed record AuthorizePurchaseOrderCommand(Guid TenantId, Guid PurchaseOrderId) : IRequest, ITenantScopedRequest;
 public sealed record CancelPurchaseOrderCommand(Guid TenantId, Guid PurchaseOrderId) : IRequest, ITenantScopedRequest;
@@ -74,7 +74,6 @@ public sealed class ReceivePurchaseOrderCommandValidator : AbstractValidator<Rec
         {
             item.RuleFor(line => line.ProductId).NotEmpty().WithMessage("El producto es obligatorio.");
             item.RuleFor(line => line.ReceivedQuantity).GreaterThanOrEqualTo(0).WithMessage("La cantidad recibida no puede ser negativa.");
-            item.RuleFor(line => line.UnitCost).GreaterThanOrEqualTo(0).WithMessage("El costo unitario no puede ser negativo.");
         });
     }
 }
@@ -174,11 +173,9 @@ public sealed class ReceivePurchaseOrderCommandHandler(ApplicationDbContext cont
             var received = receivedLines[line.ProductId];
             var product = products[line.ProductId];
             line.Quantity = received.ReceivedQuantity;
-            line.UnitCost = received.UnitCost;
             line.TotalAmount = line.Quantity * line.UnitCost;
             order.TotalAmount += line.TotalAmount;
             product.Stock += line.Quantity;
-            product.Cost = line.UnitCost;
             if (line.Quantity > 0)
                 context.StockMovements.Add(new StockMovement { Id = Guid.NewGuid(), TenantId = request.TenantId, ProductId = product.Id, WarehouseId = order.WarehouseId, Type = StockMovementType.Receipt, Quantity = line.Quantity, Reason = "Recepción de compra", Reference = order.Id.ToString("N") });
         }

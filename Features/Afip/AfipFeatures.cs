@@ -146,8 +146,11 @@ public sealed class AuthorizeInvoiceCommandHandler(ApplicationDbContext context,
         catch (Exception exception)
         {
             logger.LogError(exception, "AFIP authorization failed for invoice {InvoiceId} and tenant {TenantId}", invoice.Id, request.TenantId);
-            invoice.AfipResult = "Rejected";
-            invoice.Status = "Rejected";
+            // A technical failure (credentials, connectivity or an unavailable
+            // service) is retryable. Keep the receipt in the ARCA queue rather
+            // than labelling it as a fiscal rejection.
+            invoice.AfipResult = "Pending";
+            invoice.Status = "Pending";
             invoice.AfipErrors = exception.Message.Length > 4000 ? exception.Message[..4000] : exception.Message;
             await context.SaveChangesAsync(cancellationToken);
             throw;

@@ -22,11 +22,13 @@ public sealed class InventoryToolsController(ApplicationDbContext db, ICurrentUs
 
     [HttpGet("products/{id:guid}/kardex")]
     [Authorize(Roles = Roles.Inventory)]
-    public async Task<IActionResult> Kardex(Guid id, CancellationToken ct, int page = 1, int pageSize = 50)
+    public async Task<IActionResult> Kardex(Guid id, CancellationToken ct, int page = 1, int pageSize = 50, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, StockMovementType? type = null)
     {
         var warehouseId = Warehouse;
         if (page < 1 || pageSize is < 1 or > 100) return BadRequest(new { message = "Paginación inválida." });
-        if (!await db.Products.AnyAsync(p => p.Id == id, ct)) return NotFound();
+        if (fromUtc.HasValue && toUtc.HasValue && fromUtc > toUtc) return BadRequest(new { message = "La fecha desde no puede ser posterior a la fecha hasta." });
+        var product = await db.Products.AsNoTracking().Where(p => p.Id == id).Select(p => new { p.Name, p.Sku }).SingleOrDefaultAsync(ct);
+        if (product is null) return NotFound();
         var query = db.StockMovements.AsNoTracking().Where(m => m.ProductId == id && m.WarehouseId == warehouseId);
         // Build the running balance before paging; timestamp + ID give a stable order.
         var ledger = await query.OrderBy(m => m.OccurredAtUtc).ThenBy(m => m.CreatedAtUtc).ThenBy(m => m.Id).ToListAsync(ct);
@@ -35,7 +37,12 @@ public sealed class InventoryToolsController(ApplicationDbContext db, ICurrentUs
         var warehouseName = await db.Warehouses.Where(w => w.Id == warehouseId).Select(w => w.Name).SingleAsync(ct);
         long balance = 0;
         var rows = ledger.Select(m => { var before = balance; balance += m.Quantity; return new { m.Id, m.OccurredAtUtc, m.Type, m.Quantity, StockBefore = before, StockAfter = balance, m.Reason, m.Reference, Warehouse = warehouseName, User = m.UserId.HasValue ? names.GetValueOrDefault(m.UserId.Value, "Usuario eliminado") : "Sin registrar (histórico)" }; }).ToList();
-        return Ok(new { items = rows.AsEnumerable().Reverse().Skip((page - 1) * pageSize).Take(pageSize), totalCount = rows.Count, balance });
+        var filtered = rows.AsEnumerable();
+        if (fromUtc.HasValue) filtered = filtered.Where(row => row.OccurredAtUtc >= fromUtc.Value.UtcDateTime);
+        if (toUtc.HasValue) filtered = filtered.Where(row => row.OccurredAtUtc <= toUtc.Value.UtcDateTime);
+        if (type.HasValue) filtered = filtered.Where(row => row.Type == type.Value);
+        var result = filtered.Reverse().ToList();
+        return Ok(new { product, items = result.Skip((page - 1) * pageSize).Take(pageSize), totalCount = result.Count, currentStock = balance });
     }
 
     [HttpGet("products/template")]

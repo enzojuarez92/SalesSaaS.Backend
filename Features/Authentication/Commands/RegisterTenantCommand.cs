@@ -43,7 +43,8 @@ public sealed class RegisterTenantCommandHandler(
     IPasswordHasher<User> passwordHasher,
     IJwtTokenService tokenService,
     IRefreshTokenService refreshTokenService,
-    IPublisher publisher) : IRequestHandler<RegisterTenantCommand, AuthResponse>
+    IPublisher publisher,
+    IHostEnvironment environment) : IRequestHandler<RegisterTenantCommand, AuthResponse>
 {
     public async Task<AuthResponse> Handle(RegisterTenantCommand request, CancellationToken cancellationToken)
     {
@@ -84,6 +85,8 @@ public sealed class RegisterTenantCommandHandler(
             Id = Guid.NewGuid(), TenantId = tenant.Id, Code = "MAIN", Name = "Depósito Principal", IsActive = true
         };
         context.AddRange(tenant, user, membership, subscription, consumerFinal, mainWarehouse);
+        context.Categories.AddRange(DefaultCategorySeeder.CreateDefaults(tenant.Id));
+        if (environment.IsDevelopment()) context.Customers.AddRange(DevelopmentCustomerSeeder.CreateDefaults(tenant.Id));
         var refreshToken = refreshTokenService.Create(user.Id, tenant.Id);
         context.RefreshTokens.Add(refreshToken.Entity);
         await context.SaveChangesAsync(cancellationToken);

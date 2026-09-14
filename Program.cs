@@ -158,7 +158,9 @@ using (var scope = app.Services.CreateScope())
         await context.Database.MigrateAsync();
     }
     await DefaultWarehouseSeeder.EnsureActiveWarehouseForEveryTenantAsync(context);
+    await DefaultCategorySeeder.EnsureForEveryTenantAsync(context);
     await SubscriptionPlanSeeder.EnsurePlansAsync(context);
+    if (app.Environment.IsDevelopment()) await DevelopmentCustomerSeeder.EnsureForEveryTenantAsync(context);
 }
 
 app.Run();

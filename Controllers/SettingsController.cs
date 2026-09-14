@@ -10,8 +10,8 @@ using SalesSaaS.Infrastructure;
 
 namespace SalesSaaS.Controllers;
 
-public sealed record BusinessSettingsDto(Guid TenantId, [Required, StringLength(150)] string Name, [StringLength(150)] string? LegalName, [Required, RegularExpression(@"^[0-9]{11}$")] string TaxId, [StringLength(80)] string? TaxCondition, [StringLength(300)] string? Address, [StringLength(30)] string? Phone, [StringLength(2000), Url] string? LogoUrl, string PrintFormat);
-public sealed record UpdateBusinessSettingsRequest(Guid TenantId, [Required, StringLength(150)] string Name, [StringLength(150)] string? LegalName, [Required, RegularExpression(@"^[0-9]{11}$")] string TaxId, [StringLength(80)] string? TaxCondition, [StringLength(300)] string? Address, [StringLength(30)] string? Phone, [StringLength(2000), Url] string? LogoUrl, [RegularExpression("^(a4|thermal-80|thermal-58)$")] string PrintFormat = "a4");
+public sealed record BusinessSettingsDto(Guid TenantId, [Required, StringLength(150)] string Name, [StringLength(150)] string? LegalName, [Required, RegularExpression(@"^[0-9]{11}$")] string TaxId, [StringLength(80)] string? TaxCondition, [StringLength(300)] string? Address, [StringLength(30)] string? Phone, string? LogoUrl, string PrintFormat);
+public sealed record UpdateBusinessSettingsRequest(Guid TenantId, [Required, StringLength(150)] string Name, [StringLength(150)] string? LegalName, [Required, RegularExpression(@"^[0-9]{11}$")] string TaxId, [StringLength(80)] string? TaxCondition, [StringLength(300)] string? Address, [StringLength(30)] string? Phone, [StringLength(720000)] string? LogoUrl, [RegularExpression("^(a4|thermal-80|thermal-58)$")] string PrintFormat = "a4");
 public sealed record TenantUserDto(Guid Id, string FirstName, string LastName, string Email, string Role, bool IsActive, IReadOnlyList<Guid> WarehouseIds);
 public sealed record UpdateTenantUserRequest(Guid Id, Guid TenantId, [Required, StringLength(100)] string FirstName, [Required, StringLength(100)] string LastName, [Required, RegularExpression("^(Owner|Admin|Seller|Warehouse)$")] string Role, IReadOnlyList<Guid>? WarehouseIds = null);
 public sealed record ToggleTenantUserRequest(Guid TenantId, bool IsActive);
@@ -25,9 +25,31 @@ public sealed class SettingsController(ApplicationDbContext context, ISender sen
     [HttpGet("business")]
     public async Task<BusinessSettingsDto> Business([FromQuery] Guid tenantId) { var t = await context.Tenants.SingleAsync(x => x.Id == tenantId); return new(t.Id,t.Name,t.LegalName,t.TaxId,t.TaxCondition,t.Address,t.Phone,t.LogoUrl,t.PrintFormat); }
     [HttpPut("business")]
-    public async Task<BusinessSettingsDto> UpdateBusiness(UpdateBusinessSettingsRequest request) { if (!SalesSaaS.Application.Validation.ArgentineTaxId.IsValid(request.TaxId)) throw new InvalidOperationException("El CUIT no es válido."); var t=await context.Tenants.SingleAsync(x=>x.Id==request.TenantId); t.Name=request.Name.Trim(); t.LegalName=request.LegalName?.Trim(); t.TaxId=request.TaxId.Trim(); t.TaxCondition=request.TaxCondition?.Trim(); t.Address=request.Address?.Trim(); t.Phone=request.Phone?.Trim(); t.LogoUrl=request.LogoUrl?.Trim(); t.PrintFormat=request.PrintFormat; await context.SaveChangesAsync(); return new(t.Id,t.Name,t.LegalName,t.TaxId,t.TaxCondition,t.Address,t.Phone,t.LogoUrl,t.PrintFormat); }
+    public async Task<BusinessSettingsDto> UpdateBusiness(UpdateBusinessSettingsRequest request)
+    {
+        if (!SalesSaaS.Application.Validation.ArgentineTaxId.IsValid(request.TaxId)) throw new InvalidOperationException("El CUIT no es válido.");
+        if (!IsSupportedLogo(request.LogoUrl)) throw new InvalidOperationException("El logo debe ser una URL http(s) o una imagen PNG, JPG o WEBP de hasta 512 KB.");
+        var t=await context.Tenants.SingleAsync(x=>x.Id==request.TenantId);
+        t.Name=request.Name.Trim(); t.LegalName=request.LegalName?.Trim(); t.TaxId=request.TaxId.Trim(); t.TaxCondition=request.TaxCondition?.Trim(); t.Address=request.Address?.Trim(); t.Phone=request.Phone?.Trim(); t.LogoUrl=request.LogoUrl?.Trim(); t.PrintFormat=request.PrintFormat;
+        await context.SaveChangesAsync();
+        return new(t.Id,t.Name,t.LegalName,t.TaxId,t.TaxCondition,t.Address,t.Phone,t.LogoUrl,t.PrintFormat);
+    }
     [HttpPost("afip-cert")]
     public async Task<IActionResult> AfipCert(ConfigureTenantFiscalProfileCommand command) => Ok(new { id = await sender.Send(command) });
+
+    private static bool IsSupportedLogo(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)) return true;
+        var separator = value.IndexOf(",", StringComparison.Ordinal);
+        if (separator < 0) return false;
+        var header = value[..separator];
+        if (!header.Equals("data:image/png;base64", StringComparison.OrdinalIgnoreCase)
+            && !header.Equals("data:image/jpeg;base64", StringComparison.OrdinalIgnoreCase)
+            && !header.Equals("data:image/webp;base64", StringComparison.OrdinalIgnoreCase)) return false;
+        try { return Convert.FromBase64String(value[(separator + 1)..]).Length <= 512 * 1024; }
+        catch (FormatException) { return false; }
+    }
 
 }
 

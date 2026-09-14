@@ -30,6 +30,7 @@ public sealed class InvoicesController(ISender sender, ApplicationDbContext cont
         if (invoice is null) return NotFound();
 
         var tenant = await context.Tenants.AsNoTracking().SingleAsync(item => item.Id == tenantId, cancellationToken);
+        var embeddedLogo = EmbeddedLogo(tenant.LogoUrl);
         var pdf = Document.Create(document => document.Page(page =>
         {
             page.Size(PageSizes.A4);
@@ -39,9 +40,11 @@ public sealed class InvoicesController(ISender sender, ApplicationDbContext cont
             {
                 column.Item().Row(row =>
                 {
+                    if (embeddedLogo is not null) row.ConstantItem(70).Height(70).Image(embeddedLogo);
                     row.RelativeItem().Column(title => { title.Item().Text(tenant.LegalName ?? tenant.Name).Bold().FontSize(20).FontColor(Colors.Pink.Darken2); title.Item().Text(tenant.TaxId.Length > 0 ? $"CUIT: {tenant.TaxId}" : ""); });
                     row.ConstantItem(190).AlignRight().Column(data => { data.Item().Text(VoucherLabel(invoice.AfipVoucherType)).Bold().FontSize(16); data.Item().Text($"N.º {invoice.Number}"); data.Item().Text(invoice.IssuedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")); });
                 });
+                column.Item().Text($"{tenant.TaxCondition ?? ""} {tenant.Address ?? ""}".Trim());
                 column.Item().PaddingTop(12).LineHorizontal(1).LineColor(Colors.Pink.Lighten3);
             });
             page.Content().PaddingVertical(20).Column(column =>
@@ -72,6 +75,14 @@ public sealed class InvoicesController(ISender sender, ApplicationDbContext cont
     }
 
     private static string VoucherLabel(AfipVoucherType? type) => type switch { AfipVoucherType.InvoiceA => "FACTURA A", AfipVoucherType.InvoiceB => "FACTURA B", AfipVoucherType.InvoiceC => "FACTURA C", AfipVoucherType.CreditNoteA => "NOTA DE CRÉDITO A", AfipVoucherType.CreditNoteB => "NOTA DE CRÉDITO B", AfipVoucherType.CreditNoteC => "NOTA DE CRÉDITO C", _ => "TICKET / PRESUPUESTO" };
+    private static byte[]? EmbeddedLogo(string? logoUrl)
+    {
+        if (string.IsNullOrWhiteSpace(logoUrl) || !logoUrl.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase)) return null;
+        var separator = logoUrl.IndexOf(',', StringComparison.Ordinal);
+        if (separator < 0 || !logoUrl[..separator].EndsWith(";base64", StringComparison.OrdinalIgnoreCase)) return null;
+        try { return Convert.FromBase64String(logoUrl[(separator + 1)..]); }
+        catch (FormatException) { return null; }
+    }
     private static IContainer CellHeader(IContainer container) => container.Background(Colors.Pink.Lighten4).Padding(6).DefaultTextStyle(style => style.SemiBold());
     private static IContainer CellBody(IContainer container) => container.BorderBottom(1).BorderColor(Colors.Grey.Lighten2).PaddingVertical(7).PaddingHorizontal(6);
 }

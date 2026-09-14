@@ -22,7 +22,7 @@ public sealed class SalesController(IMediator mediator, ApplicationDbContext db,
     public sealed record SaleItemRow(string Product, string Sku, int Quantity, decimal UnitPrice, decimal Subtotal);
 
     [HttpGet("history")]
-    public async Task<PagedResult<SalesHistoryRow>> History([FromQuery] Guid tenantId, [FromQuery] Guid? warehouseId, [FromQuery] Guid? sellerId, [FromQuery] PaymentMethod? paymentMethod, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] string? searchTerm, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
+    public async Task<PagedResult<SalesHistoryRow>> History([FromQuery] Guid tenantId, [FromQuery] Guid? warehouseId, [FromQuery] Guid? sellerId, [FromQuery] PaymentMethod? paymentMethod, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] string? searchTerm, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 15, CancellationToken ct = default)
     {
         pageNumber = Math.Max(1, pageNumber);
         pageSize = Math.Clamp(pageSize, 1, 100);

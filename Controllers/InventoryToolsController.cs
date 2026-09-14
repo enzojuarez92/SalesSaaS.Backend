@@ -22,7 +22,7 @@ public sealed class InventoryToolsController(ApplicationDbContext db, ICurrentUs
 
     [HttpGet("products/{id:guid}/kardex")]
     [Authorize(Roles = Roles.Inventory)]
-    public async Task<IActionResult> Kardex(Guid id, CancellationToken ct, int page = 1, int pageSize = 50, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, StockMovementType? type = null)
+    public async Task<IActionResult> Kardex(Guid id, CancellationToken ct, int page = 1, int pageSize = 15, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, StockMovementType? type = null)
     {
         var warehouseId = Warehouse;
         if (page < 1 || pageSize is < 1 or > 100) return BadRequest(new { message = "Paginación inválida." });

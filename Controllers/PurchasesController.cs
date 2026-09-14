@@ -5,6 +5,7 @@ using SalesSaaS.Domain;
 using SalesSaaS.Features.Purchases;
 using SalesSaaS.Infrastructure;
 using Microsoft.EntityFrameworkCore;
+using SalesSaaS.Application.Common;
 
 namespace SalesSaaS.Controllers;
 
@@ -14,11 +15,15 @@ namespace SalesSaaS.Controllers;
 public sealed class PurchasesController(IMediator mediator, ApplicationDbContext db) : ControllerBase
 {
     [HttpGet("orders")]
-    public async Task<IActionResult> List(CancellationToken ct, int page = 1)
+    public async Task<IActionResult> List(CancellationToken ct, int page = 1, int pageSize = 15)
     {
         if (page < 1) return BadRequest();
-        return Ok(await db.PurchaseOrders.AsNoTracking().OrderByDescending(o => o.CreatedAtUtc).Skip((page - 1) * 50).Take(50)
-            .Select(o => new { o.Id, o.SupplierId, Status = db.PurchaseInvoices.Any(i => i.PurchaseOrderId == o.Id) ? "Invoiced" : o.Status, o.TotalAmount, o.CreatedAtUtc, o.CreatedByUserId, Invoiced = db.PurchaseInvoices.Any(i => i.PurchaseOrderId == o.Id), Items = o.Items.Select(i => new { i.ProductId, i.Quantity, i.UnitCost }).ToList() }).ToListAsync(ct));
+        pageSize = Math.Clamp(pageSize, 1, 15);
+        var query = db.PurchaseOrders.AsNoTracking();
+        var totalCount = await query.CountAsync(ct);
+        var items = await query.OrderByDescending(o => o.CreatedAtUtc).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(o => new { o.Id, o.SupplierId, Status = db.PurchaseInvoices.Any(i => i.PurchaseOrderId == o.Id) ? "Invoiced" : o.Status, o.TotalAmount, o.CreatedAtUtc, o.CreatedByUserId, Invoiced = db.PurchaseInvoices.Any(i => i.PurchaseOrderId == o.Id), Items = o.Items.Select(i => new { i.ProductId, i.Quantity, i.UnitCost }).ToList() }).ToListAsync(ct);
+        return Ok(new PagedResult<object>(items.Cast<object>().ToList(), totalCount, page, pageSize));
     }
 
     [HttpGet("orders/{purchaseOrderId:guid}")]
@@ -54,7 +59,15 @@ public sealed class PurchasesController(IMediator mediator, ApplicationDbContext
     public async Task<IActionResult> CreateInvoice(CreatePurchaseInvoiceCommand command) =>
         Created($"/api/purchases/invoices/{await mediator.Send(command)}", null);
     [HttpGet("invoices")]
-    public async Task<IActionResult> Invoices(CancellationToken ct) => Ok(await db.PurchaseInvoices.AsNoTracking().OrderByDescending(invoice => invoice.IssuedAtUtc).Select(invoice => new { invoice.Id, invoice.PurchaseOrderId, invoice.SupplierId, Supplier = db.Suppliers.Where(supplier => supplier.Id == invoice.SupplierId).Select(supplier => supplier.LegalName).FirstOrDefault(), invoice.Number, invoice.TotalAmount, invoice.IssuedAtUtc, HasAttachment = invoice.AttachmentData != null }).ToListAsync(ct));
+    public async Task<IActionResult> Invoices(CancellationToken ct, int page = 1, int pageSize = 15)
+    {
+        if (page < 1) return BadRequest();
+        pageSize = Math.Clamp(pageSize, 1, 15);
+        var query = db.PurchaseInvoices.AsNoTracking();
+        var totalCount = await query.CountAsync(ct);
+        var items = await query.OrderByDescending(invoice => invoice.IssuedAtUtc).Skip((page - 1) * pageSize).Take(pageSize).Select(invoice => new { invoice.Id, invoice.PurchaseOrderId, invoice.SupplierId, Supplier = db.Suppliers.Where(supplier => supplier.Id == invoice.SupplierId).Select(supplier => supplier.LegalName).FirstOrDefault(), invoice.Number, invoice.TotalAmount, invoice.IssuedAtUtc, HasAttachment = invoice.AttachmentData != null }).ToListAsync(ct);
+        return Ok(new PagedResult<object>(items.Cast<object>().ToList(), totalCount, page, pageSize));
+    }
     [HttpGet("invoices/{invoiceId:guid}")]
     public async Task<IActionResult> InvoiceDetail(Guid invoiceId, CancellationToken ct) => Ok(await db.PurchaseInvoices.AsNoTracking().Where(invoice => invoice.Id == invoiceId).Select(invoice => new { invoice.Id, invoice.Number, invoice.TotalAmount, invoice.IssuedAtUtc, HasAttachment = invoice.AttachmentData != null, Supplier = db.Suppliers.Where(supplier => supplier.Id == invoice.SupplierId).Select(supplier => supplier.LegalName).FirstOrDefault(), Items = db.PurchaseOrderItems.Where(item => item.PurchaseOrderId == invoice.PurchaseOrderId).Select(item => new { item.ProductId, Product = db.Products.Where(product => product.Id == item.ProductId).Select(product => product.Name).FirstOrDefault(), Sku = db.Products.Where(product => product.Id == item.ProductId).Select(product => product.Sku).FirstOrDefault(), item.Quantity, item.UnitCost, item.TotalAmount }).ToList() }).SingleOrDefaultAsync(ct));
 

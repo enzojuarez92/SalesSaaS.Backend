@@ -3,6 +3,7 @@ using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SalesSaaS.Application.Common;
 using SalesSaaS.Application.Reporting;
 using SalesSaaS.Domain;
 using SalesSaaS.Features.Auditing;
@@ -10,6 +11,7 @@ using SalesSaaS.Infrastructure;
 
 namespace SalesSaaS.Controllers;
 public sealed record SalesReportRow(Guid Id, DateTime Date, string Customer, decimal Total, PaymentMethod PaymentMethod, string Status);
+public sealed record InventoryValuationReportRow(string Sku, string Product, string Category, int Stock, decimal UnitCost, decimal SalePrice, decimal TotalCost, decimal TotalSale);
 [ApiController][Route("api/reports")][Authorize(Roles=Roles.Administration)]
 public sealed class ReportsController(ApplicationDbContext context, ISender sender) : ControllerBase
 {
@@ -37,14 +39,60 @@ public sealed class ReportsController(ApplicationDbContext context, ISender send
  [HttpGet("inventory-valuation")]
  public async Task<object> Inventory([FromQuery]Guid tenantId,[FromQuery]Guid? warehouseId)
  {
-     var balances = context.StockMovements.Where(movement => movement.TenantId == tenantId && (!warehouseId.HasValue || movement.WarehouseId == warehouseId))
-         .GroupBy(movement => movement.ProductId).Select(group => new { ProductId = group.Key, Quantity = group.Sum(movement => movement.Quantity) });
-     var valuation = await context.Products.Where(product => product.TenantId == tenantId && product.IsActive)
-         .Select(product => new { product.Cost, product.Price, Quantity = balances.Where(balance => balance.ProductId == product.Id).Select(balance => (int?)balance.Quantity).FirstOrDefault() ?? 0 })
-         .ToListAsync();
-     return new { cost = valuation.Sum(item => item.Quantity * item.Cost), retail = valuation.Sum(item => item.Quantity * item.Price) };
+     var valuation = InventoryQuery(tenantId, warehouseId, null);
+     return new { cost = await valuation.SumAsync(item => item.TotalCost), retail = await valuation.SumAsync(item => item.TotalSale) };
+ }
+ [HttpGet("inventory-valuation/details")]
+ public async Task<PagedResult<InventoryValuationReportRow>> InventoryDetails([FromQuery]Guid tenantId,[FromQuery]Guid? warehouseId,[FromQuery]string? search,[FromQuery]int pageNumber = 1,[FromQuery]int pageSize = 15)
+ {
+     pageNumber = Math.Max(pageNumber, 1);
+     pageSize = Math.Clamp(pageSize, 1, 100);
+     var valuation = InventoryQuery(tenantId, warehouseId, search);
+     var count = await valuation.CountAsync();
+     var items = await valuation.OrderBy(item => item.Product).ThenBy(item => item.Sku).Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
+     return new PagedResult<InventoryValuationReportRow>(items, count, pageNumber, pageSize);
+ }
+ [HttpGet("inventory-valuation/export-excel")]
+ public async Task<FileContentResult> ExportInventory([FromQuery]Guid tenantId,[FromQuery]Guid? warehouseId,[FromQuery]string? search)
+ {
+     var rows = await InventoryQuery(tenantId, warehouseId, search).OrderBy(item => item.Product).ToListAsync();
+     using var workbook = new XLWorkbook();
+     var sheet = workbook.Worksheets.Add("Valoración de stock");
+     sheet.Cell("A1").Value = "Valoración de stock";
+     sheet.Range("A1:H1").Merge().Style.Font.SetBold().Font.SetFontSize(16).Fill.SetBackgroundColor(XLColor.FromHtml("#EC4899")).Font.SetFontColor(XLColor.White);
+     sheet.Cell("A2").Value = $"Generado: {DateTime.Now:dd/MM/yyyy HH:mm}";
+     sheet.Cell("A4").InsertTable(rows.Select(row => new { Código = row.Sku, Producto = row.Product, Categoría = row.Category, Stock = row.Stock, CostoUnitario = row.UnitCost, PrecioVenta = row.SalePrice, TotalCosto = row.TotalCost, TotalVenta = row.TotalSale }), "Valoracion", true);
+     var table = sheet.Table("Valoracion");
+     table.Theme = XLTableTheme.TableStyleMedium2;
+     foreach (var column in new[] { 5, 6, 7, 8 }) sheet.Column(column).Style.NumberFormat.Format = "$ #,##0.00";
+     sheet.Columns().AdjustToContents();
+     sheet.Column(2).Width = Math.Max(sheet.Column(2).Width, 24);
+     using var stream = new MemoryStream();
+     workbook.SaveAs(stream);
+     return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"valoracion-stock-{DateTime.UtcNow:yyyyMMdd}.xlsx");
  }
  [HttpGet("audit-logs")] public async Task<IReadOnlyList<AuditLogDto>> Audit([FromQuery]Guid tenantId,[FromQuery]DateTime? fromUtc,[FromQuery]DateTime? toUtc,[FromQuery]Guid? warehouseId)=>await sender.Send(new GetAuditLogsQuery(tenantId,null,fromUtc,toUtc,100,warehouseId));
+ private IQueryable<InventoryValuationReportRow> InventoryQuery(Guid tenantId, Guid? warehouseId, string? search)
+ {
+     var balances = context.StockMovements.Where(movement => movement.TenantId == tenantId && (!warehouseId.HasValue || movement.WarehouseId == warehouseId))
+         .GroupBy(movement => movement.ProductId).Select(group => new { ProductId = group.Key, Quantity = group.Sum(movement => movement.Quantity) });
+     var products = context.Products.AsNoTracking().Where(product => product.TenantId == tenantId && product.IsActive);
+     if (!string.IsNullOrWhiteSpace(search))
+     {
+         var term = search.Trim();
+         products = products.Where(product => product.Sku.Contains(term) || product.Name.Contains(term) || (product.Category != null && product.Category.Name.Contains(term)));
+     }
+     return products
+         .Select(product => new InventoryValuationReportRow(
+             product.Sku,
+             product.Name,
+             product.Category == null ? "Sin categoría" : product.Category.Name,
+             balances.Where(balance => balance.ProductId == product.Id).Select(balance => (int?)balance.Quantity).FirstOrDefault() ?? 0,
+             product.Cost,
+             product.Price,
+             (balances.Where(balance => balance.ProductId == product.Id).Select(balance => (int?)balance.Quantity).FirstOrDefault() ?? 0) * product.Cost,
+             (balances.Where(balance => balance.ProductId == product.Id).Select(balance => (int?)balance.Quantity).FirstOrDefault() ?? 0) * product.Price));
+}
  private IQueryable<SalesReportRow> Query(Guid t,DateTime? f,DateTime? to,string? c,PaymentMethod? p,string? s,Guid? warehouseId){var q=context.Orders.AsNoTracking().Include(x=>x.Customer).Where(x=>x.TenantId==t&&(!warehouseId.HasValue||x.WarehouseId==warehouseId));if(f.HasValue)q=q.Where(x=>x.OrderDate>=f);if(to.HasValue)q=q.Where(x=>x.OrderDate<=to);if(!string.IsNullOrWhiteSpace(c))q=q.Where(x=>x.Customer!.Name.Contains(c));if(p.HasValue)q=q.Where(x=>x.PaymentMethod==p);if(!string.IsNullOrWhiteSpace(s))q=q.Where(x=>x.Status==s);return q.OrderByDescending(x=>x.OrderDate).Select(x=>new SalesReportRow(x.Id,x.OrderDate,x.Customer!.Name,x.TotalAmount,x.PaymentMethod,x.Status));}
  private static string PaymentLabel(PaymentMethod method) => method switch { PaymentMethod.Cash => "Efectivo", PaymentMethod.CreditCard => "Tarjeta de crédito", PaymentMethod.DebitCard => "Tarjeta de débito", PaymentMethod.BankTransfer => "Transferencia", PaymentMethod.MercadoPago => "Mercado Pago", PaymentMethod.VirtualWallet => "Billetera virtual", PaymentMethod.Account => "Cuenta corriente", PaymentMethod.Other => "Otros", _ => method.ToString() };
 }

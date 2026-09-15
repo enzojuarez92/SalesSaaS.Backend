@@ -13,10 +13,10 @@ public sealed class ActiveContextMiddleware(RequestDelegate next)
     {
         if (user.IsAuthenticated)
         {
-            var membership = await db.TenantMemberships.AsNoTracking().Include(x => x.User)
+            var membership = await db.TenantMemberships.AsNoTracking().Include(x => x.User).Include(x => x.Tenant)
                 .SingleOrDefaultAsync(x => x.TenantId == user.TenantId && x.UserId == user.UserId, http.RequestAborted);
             var version = http.User.FindFirstValue("token_version") ?? "0";
-            if (membership is null || !membership.IsActive || membership.User is not { IsActive: true }
+            if (membership is null || !membership.IsActive || membership.User is not { IsActive: true } || membership.Tenant is not { IsActive: true }
                 || membership.Role != http.User.FindFirstValue(ClaimTypes.Role)
                 || version != membership.User.TokenVersion.ToString(System.Globalization.CultureInfo.InvariantCulture))
                 throw new UnauthorizedAccessException("Tu acceso cambió o la sesión venció. Iniciá sesión nuevamente.");
@@ -27,7 +27,7 @@ public sealed class ActiveContextMiddleware(RequestDelegate next)
                     throw new InvalidOperationException("El depósito seleccionado no es válido.");
                 if (!await db.Warehouses.AnyAsync(x => x.Id == warehouseId && x.TenantId == user.TenantId && x.IsActive, http.RequestAborted))
                     throw new ForbiddenAccessException("El depósito no pertenece al negocio activo o está inactivo.");
-                if (membership.Role is not (Roles.Owner or Roles.Admin) && !await db.UserWarehouses.AnyAsync(x => x.UserId == user.UserId && x.TenantId == user.TenantId && x.WarehouseId == warehouseId, http.RequestAborted))
+                if (membership.Role is not (Roles.SuperAdmin or Roles.Owner or Roles.Admin) && !await db.UserWarehouses.AnyAsync(x => x.UserId == user.UserId && x.TenantId == user.TenantId && x.WarehouseId == warehouseId, http.RequestAborted))
                     throw new ForbiddenAccessException("No tenés acceso al depósito seleccionado.");
                 http.Items["WarehouseId"] = warehouseId;
             }

@@ -102,7 +102,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("PlatformAdmin", policy => policy.RequireClaim("platform_admin", "true"));
+    options.AddPolicy("PlatformAdmin", policy => policy.RequireRole(Roles.SuperAdmin));
     options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
@@ -160,6 +160,7 @@ using (var scope = app.Services.CreateScope())
     await DefaultWarehouseSeeder.EnsureActiveWarehouseForEveryTenantAsync(context);
     await DefaultCategorySeeder.EnsureForEveryTenantAsync(context);
     await SubscriptionPlanSeeder.EnsurePlansAsync(context);
+    await SuperAdminSeeder.EnsureConfiguredSuperAdminsAsync(context, builder.Configuration);
     if (app.Environment.IsDevelopment()) await DevelopmentCustomerSeeder.EnsureForEveryTenantAsync(context);
 }
 

@@ -39,23 +39,32 @@ public sealed class ReportsController(ApplicationDbContext context, ISender send
  [HttpGet("inventory-valuation")]
  public async Task<object> Inventory([FromQuery]Guid tenantId,[FromQuery]Guid? warehouseId)
  {
-     var valuation = InventoryQuery(tenantId, warehouseId, null);
-     return new { cost = await valuation.SumAsync(item => item.TotalCost), retail = await valuation.SumAsync(item => item.TotalSale) };
+     var balances = context.StockMovements.Where(movement => movement.TenantId == tenantId && (!warehouseId.HasValue || movement.WarehouseId == warehouseId))
+         .GroupBy(movement => movement.ProductId).Select(group => new { ProductId = group.Key, Quantity = group.Sum(movement => movement.Quantity) });
+     var valuation = await context.Products.AsNoTracking().Where(product => product.TenantId == tenantId && product.IsActive)
+         .Select(product => new
+         {
+             product.Cost,
+             product.Price,
+             Quantity = balances.Where(balance => balance.ProductId == product.Id).Select(balance => (int?)balance.Quantity).FirstOrDefault() ?? 0
+         }).ToListAsync();
+     return new { cost = valuation.Sum(item => item.Quantity * item.Cost), retail = valuation.Sum(item => item.Quantity * item.Price) };
  }
  [HttpGet("inventory-valuation/details")]
  public async Task<PagedResult<InventoryValuationReportRow>> InventoryDetails([FromQuery]Guid tenantId,[FromQuery]Guid? warehouseId,[FromQuery]string? search,[FromQuery]int pageNumber = 1,[FromQuery]int pageSize = 15)
  {
      pageNumber = Math.Max(pageNumber, 1);
      pageSize = Math.Clamp(pageSize, 1, 100);
-     var valuation = InventoryQuery(tenantId, warehouseId, search);
-     var count = await valuation.CountAsync();
-     var items = await valuation.OrderBy(item => item.Product).ThenBy(item => item.Sku).Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
+     var products = InventoryProducts(tenantId, search);
+     var count = await products.CountAsync();
+     var page = products.OrderBy(product => product.Name).ThenBy(product => product.Sku).Skip((pageNumber - 1) * pageSize).Take(pageSize);
+     var items = await InventoryRows(page, tenantId, warehouseId).ToListAsync();
      return new PagedResult<InventoryValuationReportRow>(items, count, pageNumber, pageSize);
  }
  [HttpGet("inventory-valuation/export-excel")]
  public async Task<FileContentResult> ExportInventory([FromQuery]Guid tenantId,[FromQuery]Guid? warehouseId,[FromQuery]string? search)
  {
-     var rows = await InventoryQuery(tenantId, warehouseId, search).OrderBy(item => item.Product).ToListAsync();
+     var rows = await InventoryRows(InventoryProducts(tenantId, search).OrderBy(product => product.Name).ThenBy(product => product.Sku), tenantId, warehouseId).ToListAsync();
      using var workbook = new XLWorkbook();
      var sheet = workbook.Worksheets.Add("Valoración de stock");
      sheet.Cell("A1").Value = "Valoración de stock";
@@ -72,16 +81,20 @@ public sealed class ReportsController(ApplicationDbContext context, ISender send
      return File(stream.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"valoracion-stock-{DateTime.UtcNow:yyyyMMdd}.xlsx");
  }
  [HttpGet("audit-logs")] public async Task<IReadOnlyList<AuditLogDto>> Audit([FromQuery]Guid tenantId,[FromQuery]DateTime? fromUtc,[FromQuery]DateTime? toUtc,[FromQuery]Guid? warehouseId)=>await sender.Send(new GetAuditLogsQuery(tenantId,null,fromUtc,toUtc,100,warehouseId));
- private IQueryable<InventoryValuationReportRow> InventoryQuery(Guid tenantId, Guid? warehouseId, string? search)
+ private IQueryable<Product> InventoryProducts(Guid tenantId, string? search)
  {
-     var balances = context.StockMovements.Where(movement => movement.TenantId == tenantId && (!warehouseId.HasValue || movement.WarehouseId == warehouseId))
-         .GroupBy(movement => movement.ProductId).Select(group => new { ProductId = group.Key, Quantity = group.Sum(movement => movement.Quantity) });
      var products = context.Products.AsNoTracking().Where(product => product.TenantId == tenantId && product.IsActive);
      if (!string.IsNullOrWhiteSpace(search))
      {
          var term = search.Trim();
          products = products.Where(product => product.Sku.Contains(term) || product.Name.Contains(term) || (product.Category != null && product.Category.Name.Contains(term)));
      }
+     return products;
+ }
+ private IQueryable<InventoryValuationReportRow> InventoryRows(IQueryable<Product> products, Guid tenantId, Guid? warehouseId)
+ {
+     var balances = context.StockMovements.Where(movement => movement.TenantId == tenantId && (!warehouseId.HasValue || movement.WarehouseId == warehouseId))
+         .GroupBy(movement => movement.ProductId).Select(group => new { ProductId = group.Key, Quantity = group.Sum(movement => movement.Quantity) });
      return products
          .Select(product => new InventoryValuationReportRow(
              product.Sku,

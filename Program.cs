@@ -27,6 +27,7 @@ using Microsoft.Data.SqlClient;
 using QuestPDF.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+var seedSuperAdminOnly = args.Contains("--seed-superadmin", StringComparer.OrdinalIgnoreCase);
 QuestPDF.Settings.License = LicenseType.Community;
 
 // 1. Conectamos el DbContext. SQL Server local en Docker usa un certificado
@@ -160,8 +161,9 @@ using (var scope = app.Services.CreateScope())
     await DefaultWarehouseSeeder.EnsureActiveWarehouseForEveryTenantAsync(context);
     await DefaultCategorySeeder.EnsureForEveryTenantAsync(context);
     await SubscriptionPlanSeeder.EnsurePlansAsync(context);
-    await SuperAdminSeeder.EnsureConfiguredSuperAdminsAsync(context, builder.Configuration);
+    await SuperAdminSeeder.EnsureConfiguredSuperAdminsAsync(context, builder.Configuration, scope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>());
     if (app.Environment.IsDevelopment()) await DevelopmentCustomerSeeder.EnsureForEveryTenantAsync(context);
 }
 
+if (seedSuperAdminOnly) return;
 app.Run();

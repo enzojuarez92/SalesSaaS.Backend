@@ -27,6 +27,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
     public DbSet<SaaSInvoice> SaaSInvoices => Set<SaaSInvoice>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<PlatformNotification> PlatformNotifications => Set<PlatformNotification>();
+    public DbSet<PlatformNotificationRead> PlatformNotificationReads => Set<PlatformNotificationRead>();
+    public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Customer> Customers => Set<Customer>();
@@ -115,6 +118,10 @@ public class ApplicationDbContext : DbContext
             !_currentUser.TenantId.HasValue || invoice.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<Notification>().HasQueryFilter(notification =>
             !_currentUser.TenantId.HasValue || notification.TenantId == _currentUser.TenantId);
+        modelBuilder.Entity<PlatformNotificationRead>().HasQueryFilter(item =>
+            !_currentUser.TenantId.HasValue || item.TenantId == _currentUser.TenantId);
+        modelBuilder.Entity<SupportTicket>().HasQueryFilter(ticket =>
+            !_currentUser.TenantId.HasValue || ticket.TenantId == _currentUser.TenantId);
         modelBuilder.Entity<AuditLog>().HasQueryFilter(log =>
             (!_currentUser.TenantId.HasValue || log.TenantId == _currentUser.TenantId) && (!_currentUser.WarehouseId.HasValue || log.WarehouseId == _currentUser.WarehouseId));
         modelBuilder.Entity<Customer>().HasQueryFilter(customer =>

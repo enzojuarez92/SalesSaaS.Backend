@@ -57,6 +57,14 @@ public sealed class SuperAdminSupportController(ApplicationDbContext context) : 
         var ticket = await context.SupportTickets.IgnoreQueryFilters().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (ticket is null) return NotFound();
         ticket.Response = request.Response.Trim(); ticket.Status = request.Status; ticket.UpdatedAtUtc = DateTime.UtcNow;
+        context.Notifications.Add(new Notification
+        {
+            Id = Guid.NewGuid(),
+            TenantId = ticket.TenantId,
+            UserId = ticket.UserId,
+            Title = "Tenés una respuesta de soporte",
+            Message = $"Respondimos tu consulta: {ticket.Subject}",
+        });
         await context.SaveChangesAsync(cancellationToken);
         var tenantName = await context.Tenants.IgnoreQueryFilters().Where(item => item.Id == ticket.TenantId).Select(item => item.Name).SingleOrDefaultAsync(cancellationToken);
         var userName = await context.Users.Where(item => item.Id == ticket.UserId).Select(item => item.FirstName + " " + item.LastName).SingleOrDefaultAsync(cancellationToken);

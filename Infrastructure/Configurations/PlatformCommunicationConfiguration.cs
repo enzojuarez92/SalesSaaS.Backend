@@ -38,3 +38,14 @@ public sealed class SupportTicketConfiguration : IEntityTypeConfiguration<Suppor
         builder.HasOne<User>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
     }
 }
+
+public sealed class SupportTicketMessageConfiguration : IEntityTypeConfiguration<SupportTicketMessage>
+{
+    public void Configure(EntityTypeBuilder<SupportTicketMessage> builder)
+    {
+        builder.Property(item => item.Message).HasMaxLength(4000).IsRequired();
+        builder.HasIndex(item => new { item.SupportTicketId, item.CreatedAtUtc });
+        builder.HasOne<SupportTicket>().WithMany().HasForeignKey(item => item.SupportTicketId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<User>().WithMany().HasForeignKey(item => item.SenderUserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}

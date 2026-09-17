@@ -10,6 +10,8 @@ namespace SalesSaaS.Controllers;
 public sealed record PlatformNotificationDto(Guid Id, string Title, string Message, string Severity, Guid? TargetTenantId, string? TargetTenantName, bool IsActive, DateTime CreatedAtUtc);
 public sealed record CreatePlatformNotificationRequest(string Title, string Message, string Severity, Guid? TargetTenantId);
 public sealed record UpdatePlatformNotificationRequest(string Title, string Message, string Severity, Guid? TargetTenantId, bool IsActive);
+public sealed record NotificationHistoryDto(Guid Id, string Source, string Title, string Message, string Severity, bool IsRead, DateTime CreatedAtUtc);
+public sealed record PagedNotificationHistory(IReadOnlyList<NotificationHistoryDto> Items, int PageNumber, int PageSize, int TotalCount, int TotalPages);
 
 [ApiController]
 [Route("api/superadmin/notifications")]
@@ -81,6 +83,27 @@ public sealed class PlatformNotificationInboxController(ApplicationDbContext con
         return await context.PlatformNotifications.AsNoTracking().Where(item => item.IsActive && (item.TargetTenantId == null || item.TargetTenantId == tenantId)
             && !context.PlatformNotificationReads.Any(read => read.PlatformNotificationId == item.Id && read.TenantId == tenantId))
             .OrderByDescending(item => item.CreatedAtUtc).Select(item => new PlatformNotificationDto(item.Id, item.Title, item.Message, item.Severity, item.TargetTenantId, null, item.IsActive, item.CreatedAtUtc)).ToListAsync(cancellationToken);
+    }
+
+    [HttpGet("history")]
+    public async Task<PagedNotificationHistory> History([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 15, CancellationToken cancellationToken = default)
+    {
+        if (!currentUser.TenantId.HasValue || !currentUser.UserId.HasValue) throw new UnauthorizedAccessException("No se pudo identificar al usuario actual.");
+        pageNumber = Math.Max(1, pageNumber);
+        pageSize = Math.Clamp(pageSize, 1, 50);
+        var tenantId = currentUser.TenantId.Value;
+        var userId = currentUser.UserId.Value;
+        var personal = await context.Notifications.AsNoTracking().Where(item => item.TenantId == tenantId && item.UserId == userId)
+            .Select(item => new NotificationHistoryDto(item.Id, "personal", item.Title, item.Message, "info", item.IsRead, item.CreatedAtUtc)).ToListAsync(cancellationToken);
+        var readNotificationIds = await context.PlatformNotificationReads.AsNoTracking().Where(item => item.TenantId == tenantId).Select(item => item.PlatformNotificationId).ToListAsync(cancellationToken);
+        var platform = await context.PlatformNotifications.AsNoTracking().Where(item => item.TargetTenantId == null || item.TargetTenantId == tenantId)
+            .Select(item => new { item.Id, item.Title, item.Message, item.Severity, item.CreatedAtUtc }).ToListAsync(cancellationToken);
+        var all = personal.Concat(platform.Select(item => new NotificationHistoryDto(item.Id, "platform", item.Title, item.Message, item.Severity, readNotificationIds.Contains(item.Id), item.CreatedAtUtc)))
+            .OrderByDescending(item => item.CreatedAtUtc).ToList();
+        var totalCount = all.Count;
+        var totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)pageSize));
+        var items = all.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+        return new PagedNotificationHistory(items, pageNumber, pageSize, totalCount, totalPages);
     }
 
     [HttpPost("platform/{id:guid}/read")]

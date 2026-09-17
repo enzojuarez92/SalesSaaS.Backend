@@ -30,6 +30,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<PlatformNotification> PlatformNotifications => Set<PlatformNotification>();
     public DbSet<PlatformNotificationRead> PlatformNotificationReads => Set<PlatformNotificationRead>();
     public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
+    public DbSet<SupportTicketMessage> SupportTicketMessages => Set<SupportTicketMessage>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Customer> Customers => Set<Customer>();

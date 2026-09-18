@@ -9,5 +9,5 @@ public sealed class EmailOptions
     public string UserName { get; init; } = string.Empty;
     public string Password { get; init; } = string.Empty;
     public string SenderEmail { get; init; } = string.Empty;
-    public string SenderName { get; init; } = "SalesSaaS";
+    public string SenderName { get; init; } = "KloverCloud";
 }

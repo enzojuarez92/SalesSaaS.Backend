@@ -61,7 +61,7 @@ public sealed class WelcomeTenantRegisteredEventHandler(ApplicationDbContext con
     {
         context.Notifications.Add(new Notification { Id = Guid.NewGuid(), TenantId = notification.TenantId, UserId = notification.UserId, Title = "Bienvenido a SalesSaaS", Message = $"Tu negocio {notification.TenantName} fue creado correctamente." });
         await context.SaveChangesAsync(cancellationToken);
-        await emailQueue.QueueAsync(new EmailMessage(notification.Email, "Bienvenido a SalesSaaS", templates.Render("Welcome", new Dictionary<string, string> { ["Name"] = notification.UserName, ["TenantName"] = notification.TenantName })), cancellationToken);
+        await emailQueue.QueueAsync(new EmailMessage(notification.Email, "Bienvenido a KloverCloud", templates.Render("Welcome", new Dictionary<string, string> { ["Name"] = notification.UserName, ["TenantName"] = notification.TenantName })), cancellationToken);
     }
 }
 public sealed class LowStockReachedEventHandler(ApplicationDbContext context, IEmailTemplateService templates, IEmailQueue emailQueue) : INotificationHandler<LowStockReachedEvent>

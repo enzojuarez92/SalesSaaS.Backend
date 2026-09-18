@@ -17,6 +17,18 @@ public sealed record SubscriptionPlanDto(Guid Id, string Name, decimal MonthlyPr
 public sealed record TenantSubscriptionDto(Guid Id, Guid SubscriptionPlanId, string PlanName, SubscriptionStatus Status, DateTime StartsAtUtc, DateTime ExpiresAtUtc, bool AutoRenew, string? ProviderSubscriptionId);
 public sealed record SubscriptionCheckoutDto(Guid SubscriptionId, Guid SaaSInvoiceId, string CheckoutUrl, string ExternalReference, bool IsSimulated);
 
+internal static class BillingTerm
+{
+    public static void ActivateForPaidTerm(TenantSubscription subscription, DateTime paidAtUtc)
+    {
+        // The initial dates are only a pending-payment estimate. Start the term
+        // when Mercado Pago confirms the payment, preserving monthly vs annual billing.
+        var isAnnual = subscription.ExpiresAtUtc - subscription.StartsAtUtc >= TimeSpan.FromDays(300);
+        subscription.StartsAtUtc = paidAtUtc;
+        subscription.ExpiresAtUtc = isAnnual ? paidAtUtc.AddYears(1) : paidAtUtc.AddMonths(1);
+    }
+}
+
 public sealed class CreateSubscriptionPlanCommandValidator : AbstractValidator<CreateSubscriptionPlanCommand>
 {
     public CreateSubscriptionPlanCommandValidator()
@@ -73,6 +85,7 @@ public sealed class SubscribeTenantCommandHandler(ApplicationDbContext context, 
         if (checkout.IsSimulated)
         {
             subscription.Status = SubscriptionStatus.Active;
+            BillingTerm.ActivateForPaidTerm(subscription, now);
             invoice.Status = SaaSInvoiceStatus.Paid;
             invoice.PaidAtUtc = now;
         }
@@ -106,8 +119,10 @@ public sealed class ProcessPaymentWebhookCommandHandler(ApplicationDbContext con
         invoice.PaidAtUtc = DateTime.UtcNow;
         var subscription = await context.TenantSubscriptions.SingleAsync(item => item.Id == invoice.TenantSubscriptionId, cancellationToken);
         subscription.Status = SubscriptionStatus.Active;
+        BillingTerm.ActivateForPaidTerm(subscription, invoice.PaidAtUtc.Value);
         subscription.ProviderSubscriptionId ??= result.ProviderSubscriptionId;
         await context.SaveChangesAsync(cancellationToken);
         logger.LogInformation("SaaS payment {SaaSInvoiceId} completed for tenant {TenantId}", invoice.Id, invoice.TenantId);
     }
+
 }

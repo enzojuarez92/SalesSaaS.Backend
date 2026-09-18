@@ -123,7 +123,9 @@ Las claves pueden configurarse como variables de entorno con `__` en vez de
 | `Database__MigrateOnStartup` | `true` para aplicar migraciones al arrancar un contenedor API |
 | `Afip__Environment` | `Homologation` o `Production` |
 | `Afip__Cuit`, `Afip__Certificate`, `Afip__PrivateKey` | Credenciales AFIP por ambiente; almacenar secretas |
-| `MercadoPago__AccessToken` | Access token privado de Mercado Pago; ausente sólo en Development habilita el flujo simulado |
+| `MercadoPago__AccessToken` | Access token privado de Mercado Pago. Para Sandbox usá un token de prueba `APP_USR-...`. |
+| `MercadoPago__UseSandbox` | `true` usa `sandbox_init_point` y conserva la verificación real de Mercado Pago. |
+| `MercadoPago__EnableMockCheckout` | `true` activa una simulación local explícita; no se habilita automáticamente en Development. |
 | `MercadoPago__WebhookSecret` | Clave secreta de la notificación Webhooks de Mercado Pago. Es obligatoria en producción para validar `x-signature` con HMAC SHA-256. |
 | `MercadoPago__SuccessUrl`, `MercadoPago__FailureUrl`, `MercadoPago__NotificationUrl` | URLs HTTPS públicas del checkout y webhook |
 | `Email__Host`, `Email__Port`, `Email__User`, `Email__Password` | SMTP para envío de comprobantes |

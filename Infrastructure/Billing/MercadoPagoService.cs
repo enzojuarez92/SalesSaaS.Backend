@@ -15,15 +15,20 @@ public sealed class MercadoPagoOptions
     public string? SuccessUrl { get; init; }
     public string? FailureUrl { get; init; }
     public string WebhookSecret { get; init; } = string.Empty;
+    /// <summary>
+    /// Selects Mercado Pago's sandbox checkout URL. This does not simulate a payment:
+    /// the preference is still created and verified against Mercado Pago's API.
+    /// </summary>
+    public bool UseSandbox { get; init; }
     public bool EnableMockCheckout { get; init; }
 }
 
-public sealed class MercadoPagoService(HttpClient client, IHostEnvironment environment, IOptions<MercadoPagoOptions> options) : IPaymentGatewayService
+public sealed class MercadoPagoService(HttpClient client, IOptions<MercadoPagoOptions> options) : IPaymentGatewayService
 {
     private readonly MercadoPagoOptions _options = options.Value;
-    // Production simulation requires an explicit opt-in. A missing token must
-    // never grant paid access by itself.
-    private bool IsMockMode => environment.IsDevelopment() || _options.EnableMockCheckout;
+    // Simulation must always be explicitly enabled. Development can use Mercado
+    // Pago's real sandbox API by setting UseSandbox=true and an access token.
+    private bool IsMockMode => _options.EnableMockCheckout;
 
     public async Task<PaymentCheckoutResult> CreateSubscriptionCheckoutAsync(PaymentCheckoutRequest request, CancellationToken cancellationToken)
     {
@@ -52,7 +57,8 @@ public sealed class MercadoPagoService(HttpClient client, IHostEnvironment envir
         if (!response.IsSuccessStatusCode) throw new InvalidOperationException("Mercado Pago no pudo crear el checkout. Verificá las credenciales configuradas.");
         using var document = JsonDocument.Parse(body);
         var root = document.RootElement;
-        var url = root.TryGetProperty("init_point", out var initPoint) ? initPoint.GetString() : null;
+        var checkoutUrlProperty = _options.UseSandbox ? "sandbox_init_point" : "init_point";
+        var url = root.TryGetProperty(checkoutUrlProperty, out var initPoint) ? initPoint.GetString() : null;
         if (string.IsNullOrWhiteSpace(url)) throw new InvalidOperationException("Mercado Pago no devolvió una URL de checkout válida.");
         return new PaymentCheckoutResult("MercadoPago", externalReference, url, root.TryGetProperty("id", out var preference) ? preference.GetString() : null, false);
     }

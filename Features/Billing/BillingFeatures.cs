@@ -79,6 +79,8 @@ public sealed class SubscribeTenantCommandHandler(ApplicationDbContext context, 
         var subscription = new TenantSubscription { Id = Guid.NewGuid(), TenantId = request.TenantId, SubscriptionPlanId = plan.Id, Status = SubscriptionStatus.PastDue, StartsAtUtc = now, ExpiresAtUtc = request.AnnualBilling ? now.AddYears(1) : now.AddMonths(1), AutoRenew = request.AutoRenew };
         var invoice = new SaaSInvoice { Id = Guid.NewGuid(), TenantId = request.TenantId, TenantSubscriptionId = subscription.Id, Amount = request.AnnualBilling ? plan.AnnualPrice : plan.MonthlyPrice, Currency = plan.Currency, PaymentProvider = request.PaymentProvider.Trim(), DueAtUtc = now.AddDays(7), ExternalReference = $"pending-{Guid.NewGuid():N}" };
         var checkout = await paymentGatewayService.CreateSubscriptionCheckoutAsync(new PaymentCheckoutRequest(invoice.Id, request.TenantId, invoice.Amount, invoice.Currency, $"Suscripción {plan.Name}", invoice.PaymentProvider), cancellationToken);
+        if (!checkout.IsSimulated && string.IsNullOrWhiteSpace(checkout.CheckoutUrl))
+            throw new InvalidOperationException("Mercado Pago no devolvió la URL del checkout. No se activó ningún plan.");
         invoice.ExternalReference = checkout.ExternalReference;
         invoice.CheckoutUrl = checkout.CheckoutUrl;
         subscription.ProviderSubscriptionId = checkout.ProviderSubscriptionId;

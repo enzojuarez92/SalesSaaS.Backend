@@ -18,6 +18,7 @@ using SalesSaaS.Application.Reporting;
 using SalesSaaS.Infrastructure.Reporting;
 using SalesSaaS.Application.Billing;
 using SalesSaaS.Infrastructure.Billing;
+using SalesSaaS.Infrastructure.Configuration;
 using SalesSaaS.Application.Notifications;
 using SalesSaaS.Infrastructure.Notifications;
 using SalesSaaS.Infrastructure.Health;
@@ -27,6 +28,10 @@ using Microsoft.Data.SqlClient;
 using QuestPDF.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddInMemoryCollection(MercadoPagoDotEnvConfiguration.Read(builder.Environment.ContentRootPath));
+// Standard .NET environment variables (MercadoPago__AccessToken, etc.) take
+// precedence over the local .env file, which is important in Docker/production.
+builder.Configuration.AddEnvironmentVariables();
 var seedSuperAdminOnly = args.Contains("--seed-superadmin", StringComparer.OrdinalIgnoreCase);
 QuestPDF.Settings.License = LicenseType.Community;
 

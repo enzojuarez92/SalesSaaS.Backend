@@ -23,7 +23,7 @@ public sealed class MercadoPagoOptions
     public bool EnableMockCheckout { get; init; }
 }
 
-public sealed class MercadoPagoService(HttpClient client, IOptions<MercadoPagoOptions> options) : IPaymentGatewayService
+public sealed class MercadoPagoService(HttpClient client, IOptions<MercadoPagoOptions> options, ILogger<MercadoPagoService> logger) : IPaymentGatewayService
 {
     private readonly MercadoPagoOptions _options = options.Value;
     // Simulation must always be explicitly enabled. Development can use Mercado
@@ -54,7 +54,12 @@ public sealed class MercadoPagoService(HttpClient client, IOptions<MercadoPagoOp
         message.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         using var response = await client.SendAsync(message, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("Mercado Pago no pudo crear el checkout. Verificá las credenciales configuradas.");
+        if (!response.IsSuccessStatusCode)
+        {
+            var reason = GetApiErrorReason(body);
+            logger.LogWarning("Mercado Pago rechazó la creación del checkout con HTTP {StatusCode}: {Reason}", (int)response.StatusCode, reason);
+            throw new InvalidOperationException($"Mercado Pago rechazó la creación del checkout ({(int)response.StatusCode}): {reason}");
+        }
         using var document = JsonDocument.Parse(body);
         var root = document.RootElement;
         var checkoutUrlProperty = _options.UseSandbox ? "sandbox_init_point" : "init_point";
@@ -112,4 +117,20 @@ public sealed class MercadoPagoService(HttpClient client, IOptions<MercadoPagoOp
     }
 
     private static string? JsonValue(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString() : value.ValueKind == JsonValueKind.Number ? value.GetRawText() : null;
+
+    private static string GetApiErrorReason(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var error = root.TryGetProperty("error", out var errorValue) ? JsonValue(errorValue) : null;
+            var message = root.TryGetProperty("message", out var messageValue) ? JsonValue(messageValue) : null;
+            return string.Join(": ", new[] { error, message }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim();
+        }
+        catch (JsonException)
+        {
+            return "respuesta no interpretable de Mercado Pago";
+        }
+    }
 }

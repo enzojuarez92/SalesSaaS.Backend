@@ -52,7 +52,10 @@ public sealed class MercadoPagoService(HttpClient client, IConfiguration configu
         // Mercado Pago requires back_urls.success whenever auto_return is approved.
         // Keep all three URLs explicit so the return behavior is deterministic.
         payload["back_urls"] = new { success = successUrl, failure = failureUrl, pending = failureUrl };
-        if (!string.IsNullOrWhiteSpace(successUrl)) payload["auto_return"] = "approved";
+        // Mercado Pago does not accept automatic returns to localhost. Sandbox
+        // checkout can still be tested locally; use an HTTPS tunnel in order to
+        // enable automatic return and webhooks.
+        if (HasHttpsSuccessUrl(successUrl)) payload["auto_return"] = "approved";
         message.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         using var response = await client.SendAsync(message, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -127,6 +130,9 @@ public sealed class MercadoPagoService(HttpClient client, IConfiguration configu
         if (!string.IsNullOrWhiteSpace(directEnvironmentValue)) return directEnvironmentValue;
         return fallback;
     }
+
+    private static bool HasHttpsSuccessUrl(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
 
     private static string GetApiErrorReason(string body)
     {

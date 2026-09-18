@@ -23,7 +23,7 @@ public sealed class MercadoPagoOptions
     public bool EnableMockCheckout { get; init; }
 }
 
-public sealed class MercadoPagoService(HttpClient client, IOptions<MercadoPagoOptions> options, ILogger<MercadoPagoService> logger) : IPaymentGatewayService
+public sealed class MercadoPagoService(HttpClient client, IConfiguration configuration, IOptions<MercadoPagoOptions> options, ILogger<MercadoPagoService> logger) : IPaymentGatewayService
 {
     private readonly MercadoPagoOptions _options = options.Value;
     // Simulation must always be explicitly enabled. Development can use Mercado
@@ -45,12 +45,14 @@ public sealed class MercadoPagoService(HttpClient client, IOptions<MercadoPagoOp
             ["external_reference"] = externalReference,
             ["metadata"] = new { saasInvoiceId = request.SaaSInvoiceId, tenantId = request.TenantId }
         };
-        if (!string.IsNullOrWhiteSpace(_options.NotificationUrl)) payload["notification_url"] = _options.NotificationUrl;
-        if (!string.IsNullOrWhiteSpace(_options.SuccessUrl) || !string.IsNullOrWhiteSpace(_options.FailureUrl))
-        {
-            payload["back_urls"] = new { success = _options.SuccessUrl, failure = _options.FailureUrl, pending = _options.FailureUrl };
-            payload["auto_return"] = "approved";
-        }
+        var successUrl = ResolveCallbackUrl(_options.SuccessUrl, "MERCADOPAGO_SUCCESS_URL", "http://localhost:8080/suscripcion?payment=success");
+        var failureUrl = ResolveCallbackUrl(_options.FailureUrl, "MERCADOPAGO_FAILURE_URL", "http://localhost:8080/suscripcion?payment=failure");
+        var notificationUrl = ResolveCallbackUrl(_options.NotificationUrl, "MERCADOPAGO_NOTIFICATION_URL", null);
+        if (!string.IsNullOrWhiteSpace(notificationUrl)) payload["notification_url"] = notificationUrl;
+        // Mercado Pago requires back_urls.success whenever auto_return is approved.
+        // Keep all three URLs explicit so the return behavior is deterministic.
+        payload["back_urls"] = new { success = successUrl, failure = failureUrl, pending = failureUrl };
+        if (!string.IsNullOrWhiteSpace(successUrl)) payload["auto_return"] = "approved";
         message.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         using var response = await client.SendAsync(message, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -117,6 +119,14 @@ public sealed class MercadoPagoService(HttpClient client, IOptions<MercadoPagoOp
     }
 
     private static string? JsonValue(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString() : value.ValueKind == JsonValueKind.Number ? value.GetRawText() : null;
+
+    private string? ResolveCallbackUrl(string? configuredValue, string environmentKey, string? fallback)
+    {
+        if (!string.IsNullOrWhiteSpace(configuredValue)) return configuredValue;
+        var directEnvironmentValue = configuration[environmentKey];
+        if (!string.IsNullOrWhiteSpace(directEnvironmentValue)) return directEnvironmentValue;
+        return fallback;
+    }
 
     private static string GetApiErrorReason(string body)
     {

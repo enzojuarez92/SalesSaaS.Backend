@@ -78,6 +78,13 @@ services:
       - ./deploy/certbot/conf:/etc/letsencrypt:ro
       - ./deploy/certbot/www:/var/www/certbot:ro
 
+  certbot:
+    image: certbot/certbot:latest
+    profiles: ["tools"]
+    volumes:
+      - ./deploy/certbot/conf:/etc/letsencrypt
+      - ./deploy/certbot/www:/var/www/certbot
+
 volumes:
   sqlserver_data:
   api_keys:

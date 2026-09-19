@@ -1,0 +1,83 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: Y
+      MSSQL_PID: Express
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Definí MSSQL_SA_PASSWORD en .env}
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      TZ: America/Argentina/Buenos_Aires
+      AllowedHosts: ${APP_DOMAIN}
+      Database__MigrateOnStartup: ${DATABASE_MIGRATE_ON_STARTUP:-false}
+      ConnectionStrings__DefaultConnection: Server=sqlserver,1433;Database=KloverCloud;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False
+      Jwt__Key: ${Jwt__Key:?Definí Jwt__Key en .env}
+      Jwt__Issuer: ${Jwt__Issuer:-KloverCloud}
+      Jwt__Audience: ${Jwt__Audience:-KloverCloud.Client}
+      Cors__AllowedOrigins: ${CORS_ALLOWED_ORIGINS}
+      MercadoPago__AccessToken: ${MERCADOPAGO_ACCESS_TOKEN:?Definí MERCADOPAGO_ACCESS_TOKEN en .env}
+      MercadoPago__NotificationUrl: ${MERCADOPAGO_NOTIFICATION_URL:?Definí MERCADOPAGO_NOTIFICATION_URL en .env}
+      MercadoPago__SuccessUrl: ${MERCADOPAGO_SUCCESS_URL:?Definí MERCADOPAGO_SUCCESS_URL en .env}
+      MercadoPago__FailureUrl: ${MERCADOPAGO_FAILURE_URL:?Definí MERCADOPAGO_FAILURE_URL en .env}
+      MercadoPago__WebhookSecret: ${MERCADOPAGO_WEBHOOK_SECRET:?Definí MERCADOPAGO_WEBHOOK_SECRET en .env}
+      MercadoPago__UseSandbox: ${MERCADOPAGO_USE_SANDBOX:-false}
+      MercadoPago__EnableMockCheckout: ${MERCADOPAGO_ENABLE_MOCK_CHECKOUT:-false}
+      Email__SmtpHost: ${EMAIL_SMTP_HOST:-}
+      Email__SmtpPort: ${EMAIL_SMTP_PORT:-587}
+      Email__UseSsl: ${EMAIL_USE_SSL:-true}
+      Email__UserName: ${EMAIL_USERNAME:-}
+      Email__Password: ${EMAIL_PASSWORD:-}
+      Email__SenderEmail: ${EMAIL_SENDER_EMAIL:-}
+      Email__SenderName: KloverCloud
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    expose:
+      - "8080"
+    volumes:
+      - api_keys:/root/.aspnet/DataProtection-Keys
+
+  frontend:
+    build:
+      context: ../SalesSaaS.Frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    expose:
+      - "80"
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/certbot/conf:/etc/letsencrypt:ro
+      - ./deploy/certbot/www:/var/www/certbot:ro
+
+volumes:
+  sqlserver_data:
+  api_keys:

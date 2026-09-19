@@ -114,6 +114,18 @@ builder.Services.AddAuthorization(options =>
         .Build();
 });
 
+var corsOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? string.Empty)
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Where(origin => Uri.TryCreate(origin, UriKind.Absolute, out _))
+    .ToArray();
+if (corsOrigins.Length > 0)
+{
+    builder.Services.AddCors(options => options.AddPolicy("TrustedFrontend", policy => policy
+        .WithOrigins(corsOrigins)
+        .AllowAnyHeader()
+        .AllowAnyMethod()));
+}
+
 // 2. Registramos MediatR Y el ValidationBehavior (Versión MediatR 12+)
 builder.Services.AddMediatR(cfg =>
 {
@@ -145,6 +157,7 @@ if (app.Environment.IsDevelopment())
 
 // Configure the HTTP request pipeline
 //app.UseHttpsRedirection();
+if (corsOrigins.Length > 0) app.UseCors("TrustedFrontend");
 app.UseAuthentication();
 app.UseMiddleware<ActiveContextMiddleware>();
 app.UseMiddleware<SubscriptionGatekeeperMiddleware>();

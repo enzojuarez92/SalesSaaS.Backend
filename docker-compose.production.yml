@@ -30,6 +30,8 @@ services:
       Jwt__Key: ${Jwt__Key:?Definí Jwt__Key en .env}
       Jwt__Issuer: ${Jwt__Issuer:-KloverCloud}
       Jwt__Audience: ${Jwt__Audience:-KloverCloud.Client}
+      SuperAdmin__Bootstrap__Email: ${SUPERADMIN_BOOTSTRAP_EMAIL:-}
+      SuperAdmin__Bootstrap__Password: ${SUPERADMIN_BOOTSTRAP_PASSWORD:-}
       Cors__AllowedOrigins: ${CORS_ALLOWED_ORIGINS}
       MercadoPago__AccessToken: ${MERCADOPAGO_ACCESS_TOKEN:?Definí MERCADOPAGO_ACCESS_TOKEN en .env}
       MercadoPago__NotificationUrl: ${MERCADOPAGO_NOTIFICATION_URL:?Definí MERCADOPAGO_NOTIFICATION_URL en .env}

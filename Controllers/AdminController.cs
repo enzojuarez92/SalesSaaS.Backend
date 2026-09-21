@@ -12,6 +12,7 @@ public sealed record AdminPagedResult<T>(IReadOnlyList<T> Items, int PageNumber,
 public sealed record ExtendTrialRequest(int Days = 7);
 public sealed record ChangeTenantPlanRequest(Guid SubscriptionPlanId);
 public sealed record SetTenantAccessRequest(bool IsActive);
+public sealed record UpdateSubscriptionPlanRequest(decimal MonthlyPrice, decimal AnnualPrice, int MaxUsers, int MaxWarehouses, int MaxInvoicesPerMonth, bool SupportsAfip, bool IsActive);
 
 [ApiController]
 [Route("api/admin")]
@@ -55,8 +56,28 @@ public sealed class AdminController(ApplicationDbContext context) : ControllerBa
 
     [HttpGet("plans")]
     public async Task<IReadOnlyList<AdminPlanDto>> Plans(CancellationToken cancellationToken) =>
-        await context.SubscriptionPlans.IgnoreQueryFilters().AsNoTracking().Where(plan => plan.IsActive).OrderBy(plan => plan.MonthlyPrice)
-            .Select(plan => new AdminPlanDto(plan.Id, plan.Name, plan.MonthlyPrice, plan.Currency)).ToListAsync(cancellationToken);
+        await context.SubscriptionPlans.IgnoreQueryFilters().AsNoTracking().OrderBy(plan => plan.MonthlyPrice)
+            .Select(plan => new AdminPlanDto(plan.Id, plan.Name, plan.MonthlyPrice, plan.AnnualPrice, plan.Currency, plan.MaxUsers, plan.MaxWarehouses, plan.MaxInvoicesPerMonth, plan.SupportsAfip, plan.IsDefault, plan.IsActive)).ToListAsync(cancellationToken);
+
+    [HttpPut("plans/{planId:guid}")]
+    public async Task<ActionResult<AdminPlanDto>> UpdatePlan(Guid planId, [FromBody] UpdateSubscriptionPlanRequest request, CancellationToken cancellationToken)
+    {
+        if (request.MonthlyPrice < 0 || request.AnnualPrice < 0) return BadRequest(new { message = "Los precios no pueden ser negativos." });
+        if (request.MaxUsers < 1 || request.MaxWarehouses < 1 || request.MaxInvoicesPerMonth < 1) return BadRequest(new { message = "Los límites deben ser mayores a cero." });
+
+        var plan = await context.SubscriptionPlans.IgnoreQueryFilters().SingleOrDefaultAsync(item => item.Id == planId, cancellationToken);
+        if (plan is null) return NotFound(new { message = "No encontramos el plan solicitado." });
+
+        plan.MonthlyPrice = request.MonthlyPrice;
+        plan.AnnualPrice = request.AnnualPrice;
+        plan.MaxUsers = request.MaxUsers;
+        plan.MaxWarehouses = request.MaxWarehouses;
+        plan.MaxInvoicesPerMonth = request.MaxInvoicesPerMonth;
+        plan.SupportsAfip = request.SupportsAfip;
+        plan.IsActive = request.IsActive;
+        await context.SaveChangesAsync(cancellationToken);
+        return Ok(AdminPlanDto.From(plan));
+    }
 
     [HttpPost("tenants/{tenantId:guid}/extend-trial")]
     public async Task<ActionResult<AdminTenantDto>> ExtendTrial(Guid tenantId, [FromBody] ExtendTrialRequest request, CancellationToken cancellationToken)
@@ -126,4 +147,7 @@ public sealed class AdminController(ApplicationDbContext context) : ControllerBa
     private sealed record SubscriptionSnapshot(Guid TenantId, Guid PlanId, string PlanName, decimal MonthlyPrice, SubscriptionStatus Status, DateTime ExpiresAtUtc);
 }
 
-public sealed record AdminPlanDto(Guid Id, string Name, decimal MonthlyPrice, string Currency);
+public sealed record AdminPlanDto(Guid Id, string Name, decimal MonthlyPrice, decimal AnnualPrice, string Currency, int MaxUsers, int MaxWarehouses, int MaxInvoicesPerMonth, bool SupportsAfip, bool IsDefault, bool IsActive)
+{
+    public static AdminPlanDto From(SubscriptionPlan plan) => new(plan.Id, plan.Name, plan.MonthlyPrice, plan.AnnualPrice, plan.Currency, plan.MaxUsers, plan.MaxWarehouses, plan.MaxInvoicesPerMonth, plan.SupportsAfip, plan.IsDefault, plan.IsActive);
+}

@@ -59,7 +59,7 @@ public sealed class WelcomeTenantRegisteredEventHandler(ApplicationDbContext con
 {
     public async Task Handle(WelcomeTenantRegisteredEvent notification, CancellationToken cancellationToken)
     {
-        context.Notifications.Add(new Notification { Id = Guid.NewGuid(), TenantId = notification.TenantId, UserId = notification.UserId, Title = "Bienvenido a SalesSaaS", Message = $"Tu negocio {notification.TenantName} fue creado correctamente." });
+        context.Notifications.Add(new Notification { Id = Guid.NewGuid(), TenantId = notification.TenantId, UserId = notification.UserId, Title = "Bienvenido a KloverCloud", Message = $"Tu negocio {notification.TenantName} fue creado correctamente." });
         await context.SaveChangesAsync(cancellationToken);
         await emailQueue.QueueAsync(new EmailMessage(notification.Email, "Bienvenido a KloverCloud", templates.Render("Welcome", new Dictionary<string, string> { ["Name"] = notification.UserName, ["TenantName"] = notification.TenantName })), cancellationToken);
     }

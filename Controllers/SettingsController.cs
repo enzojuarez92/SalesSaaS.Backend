@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +18,7 @@ public sealed record TenantUserDto(Guid Id, string FirstName, string LastName, s
 public sealed record UpdateTenantUserRequest(Guid Id, Guid TenantId, [Required, StringLength(100)] string FirstName, [Required, StringLength(100)] string LastName, [Required, RegularExpression("^(Owner|Admin|Seller|Warehouse)$")] string Role, IReadOnlyList<Guid>? WarehouseIds = null);
 public sealed record ToggleTenantUserRequest(Guid TenantId, bool IsActive);
 public sealed record UpdateUserWarehousesRequest(Guid TenantId, IReadOnlyList<Guid> WarehouseIds);
+public sealed record GenerateAfipCsrRequest(Guid TenantId, [Required, RegularExpression(@"^[0-9]{11}$")] string IssuerTaxId, [Required, StringLength(100), RegularExpression(@"^[a-zA-Z0-9._-]+$")] string CertificateAlias);
 
 [ApiController]
 [Route("api/settings")]
@@ -36,6 +39,21 @@ public sealed class SettingsController(ApplicationDbContext context, ISender sen
     }
     [HttpPost("afip-cert")]
     public async Task<IActionResult> AfipCert(ConfigureTenantFiscalProfileCommand command) => Ok(new { id = await sender.Send(command) });
+
+    [HttpPost("afip-csr")]
+    public ActionResult GenerateAfipCsr(GenerateAfipCsrRequest request)
+    {
+        using var key = RSA.Create(2048);
+        var subject = new X500DistinguishedName($"CN={request.CertificateAlias.Trim()}, SERIALNUMBER=CUIT {request.IssuerTaxId.Trim()}");
+        var certificateRequest = new CertificateRequest(subject, key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var csr = certificateRequest.CreateSigningRequest();
+
+        return Ok(new
+        {
+            csrPem = PemEncoding.Write("CERTIFICATE REQUEST", csr),
+            privateKeyPem = key.ExportPkcs8PrivateKeyPem()
+        });
+    }
 
     private static bool IsSupportedLogo(string? value)
     {

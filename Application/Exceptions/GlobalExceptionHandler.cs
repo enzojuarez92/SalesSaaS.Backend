@@ -2,11 +2,15 @@ using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SalesSaaS.Domain;
+using SalesSaaS.Infrastructure;
+using System.Security.Claims;
 
 namespace SalesSaaS.Application.Exceptions;
 
 public sealed class GlobalExceptionHandler(
-    ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
+    ILogger<GlobalExceptionHandler> logger,
+    IServiceScopeFactory scopeFactory) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext,
@@ -65,6 +69,7 @@ public sealed class GlobalExceptionHandler(
         if (statusCode >= StatusCodes.Status500InternalServerError)
         {
             logger.LogError(exception, "Unhandled exception for {Path}", httpContext.Request.Path);
+            await SavePlatformErrorAsync(httpContext, exception, statusCode, cancellationToken);
         }
 
         var problem = new ProblemDetails
@@ -84,5 +89,34 @@ public sealed class GlobalExceptionHandler(
         httpContext.Response.StatusCode = statusCode;
         await httpContext.Response.WriteAsJsonAsync(problem, cancellationToken);
         return true;
+    }
+
+    private async Task SavePlatformErrorAsync(HttpContext httpContext, Exception exception, int statusCode, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            Guid? userId = Guid.TryParse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var parsedUserId) ? parsedUserId : null;
+            Guid? tenantId = Guid.TryParse(httpContext.User.FindFirstValue("tenant_id"), out var parsedTenantId) ? parsedTenantId : null;
+            context.PlatformErrorLogs.Add(new PlatformErrorLog
+            {
+                Id = Guid.NewGuid(),
+                StatusCode = statusCode,
+                Method = httpContext.Request.Method,
+                Path = httpContext.Request.Path.Value ?? "/",
+                UserId = userId,
+                TenantId = tenantId,
+                UserEmail = httpContext.User.FindFirstValue(ClaimTypes.Email),
+                ErrorType = exception.GetType().Name,
+                Message = exception.Message.Length > 2000 ? exception.Message[..2000] : exception.Message,
+                TraceId = httpContext.TraceIdentifier
+            });
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception loggingException)
+        {
+            logger.LogWarning(loggingException, "Could not persist platform error log");
+        }
     }
 }

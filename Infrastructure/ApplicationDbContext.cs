@@ -40,6 +40,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<UserWarehouse> UserWarehouses => Set<UserWarehouse>();
     public DbSet<PaymentWebhookEvent> PaymentWebhookEvents => Set<PaymentWebhookEvent>();
+    public DbSet<ApiEndpointMetric> ApiEndpointMetrics => Set<ApiEndpointMetric>();
+    public DbSet<PlatformErrorLog> PlatformErrorLogs => Set<PlatformErrorLog>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Brand> Brands => Set<Brand>();

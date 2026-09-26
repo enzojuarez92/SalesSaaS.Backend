@@ -10,6 +10,8 @@ public sealed class RefreshToken
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? RevokedAtUtc { get; set; }
     public Guid? ReplacedByTokenId { get; set; }
+    public Guid? ImpersonatorUserId { get; set; }
+    public Guid? SupportImpersonationLogId { get; set; }
 
     public User? User { get; set; }
     public Tenant? Tenant { get; set; }

@@ -6,4 +6,6 @@ public interface ICurrentUser
     Guid? UserId { get; }
     Guid? TenantId { get; }
     Guid? WarehouseId => null;
+    Guid? ImpersonatorUserId => null;
+    Guid? SupportImpersonationLogId => null;
 }

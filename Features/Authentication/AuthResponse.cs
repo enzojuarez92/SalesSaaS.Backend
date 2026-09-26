@@ -11,13 +11,17 @@ public record AuthResponse(
     Guid UserId,
     string Email,
     Guid TenantId,
-    string Role)
+    string Role,
+    Guid? ImpersonatorUserId,
+    Guid? SupportImpersonationLogId)
 {
     public static AuthResponse From(
         AuthToken accessToken,
         IssuedRefreshToken refreshToken,
         User user,
-        TenantMembership membership) =>
+        TenantMembership membership,
+        Guid? impersonatorUserId = null,
+        Guid? supportImpersonationLogId = null) =>
         new(
             accessToken.AccessToken,
             accessToken.ExpiresAtUtc,
@@ -26,5 +30,7 @@ public record AuthResponse(
             user.Id,
             user.Email,
             membership.TenantId,
-            membership.Role);
+            membership.Role,
+            impersonatorUserId,
+            supportImpersonationLogId);
 }

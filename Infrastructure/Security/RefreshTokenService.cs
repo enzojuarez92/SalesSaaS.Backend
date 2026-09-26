@@ -10,7 +10,7 @@ public sealed class RefreshTokenService(IOptions<RefreshTokenOptions> options) :
 {
     private readonly RefreshTokenOptions _options = options.Value;
 
-    public IssuedRefreshToken Create(Guid userId, Guid tenantId)
+    public IssuedRefreshToken Create(Guid userId, Guid tenantId, Guid? impersonatorUserId = null, Guid? supportImpersonationLogId = null)
     {
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
         var entity = new RefreshToken
@@ -19,7 +19,9 @@ public sealed class RefreshTokenService(IOptions<RefreshTokenOptions> options) :
             UserId = userId,
             TenantId = tenantId,
             TokenHash = Hash(token),
-            ExpiresAtUtc = DateTime.UtcNow.AddDays(_options.ExpirationDays)
+            ExpiresAtUtc = DateTime.UtcNow.AddDays(_options.ExpirationDays),
+            ImpersonatorUserId = impersonatorUserId,
+            SupportImpersonationLogId = supportImpersonationLogId
         };
 
         return new IssuedRefreshToken(token, entity);

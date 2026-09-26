@@ -4,7 +4,7 @@ namespace SalesSaaS.Application.Security;
 
 public interface IRefreshTokenService
 {
-    IssuedRefreshToken Create(Guid userId, Guid tenantId);
+    IssuedRefreshToken Create(Guid userId, Guid tenantId, Guid? impersonatorUserId = null, Guid? supportImpersonationLogId = null);
     string Hash(string refreshToken);
 }
 

@@ -13,6 +13,17 @@ public sealed class ActiveContextMiddleware(RequestDelegate next)
     {
         if (user.IsAuthenticated)
         {
+            if (user.SupportImpersonationLogId.HasValue)
+            {
+                var sessionIsOpen = user.ImpersonatorUserId.HasValue && await db.SupportImpersonationLogs.AsNoTracking()
+                    .AnyAsync(log => log.Id == user.SupportImpersonationLogId
+                        && log.SuperAdminUserId == user.ImpersonatorUserId
+                        && log.ImpersonatedUserId == user.UserId
+                        && log.TenantId == user.TenantId
+                        && log.EndedAtUtc == null, http.RequestAborted);
+                if (!sessionIsOpen) throw new UnauthorizedAccessException("La sesión de soporte finalizó.");
+            }
+
             var membership = await db.TenantMemberships.AsNoTracking().Include(x => x.User).Include(x => x.Tenant)
                 .SingleOrDefaultAsync(x => x.TenantId == user.TenantId && x.UserId == user.UserId, http.RequestAborted);
             var version = http.User.FindFirstValue("token_version") ?? "0";

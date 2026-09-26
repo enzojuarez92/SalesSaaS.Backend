@@ -13,6 +13,7 @@ public sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         builder.HasIndex(log => new { log.TenantId, log.TimestampUtc });
         builder.HasIndex(log => new { log.TenantId, log.EntityName, log.TimestampUtc });
         builder.HasIndex(log => new { log.TenantId, log.WarehouseId, log.TimestampUtc });
+        builder.HasIndex(log => log.SupportImpersonationLogId);
         builder.HasOne<User>().WithMany().HasForeignKey(log => log.UserId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Tenant>().WithMany().HasForeignKey(log => log.TenantId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Warehouse>().WithMany().HasForeignKey(log => log.WarehouseId).OnDelete(DeleteBehavior.Restrict);

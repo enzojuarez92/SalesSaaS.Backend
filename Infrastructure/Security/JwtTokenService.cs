@@ -12,7 +12,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : IJwtTokenSer
 {
     private readonly JwtOptions _options = options.Value;
 
-    public AuthToken Create(User user, TenantMembership membership)
+    public AuthToken Create(User user, TenantMembership membership, Guid? impersonatorUserId = null, Guid? supportImpersonationLogId = null)
     {
         var expiresAtUtc = DateTime.UtcNow.AddMinutes(_options.ExpirationMinutes);
         var claims = new List<Claim>
@@ -24,6 +24,11 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : IJwtTokenSer
             new("token_version", user.TokenVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)),
             new(ClaimTypes.Role, membership.Role)
         };
+        if (impersonatorUserId.HasValue && supportImpersonationLogId.HasValue)
+        {
+            claims.Add(new Claim("impersonator_user_id", impersonatorUserId.Value.ToString()));
+            claims.Add(new Claim("support_impersonation_id", supportImpersonationLogId.Value.ToString()));
+        }
 
         var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Key));
         var credentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);

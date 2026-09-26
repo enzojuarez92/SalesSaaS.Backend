@@ -42,6 +42,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<PaymentWebhookEvent> PaymentWebhookEvents => Set<PaymentWebhookEvent>();
     public DbSet<ApiEndpointMetric> ApiEndpointMetrics => Set<ApiEndpointMetric>();
     public DbSet<PlatformErrorLog> PlatformErrorLogs => Set<PlatformErrorLog>();
+    public DbSet<SupportImpersonationLog> SupportImpersonationLogs => Set<SupportImpersonationLog>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Brand> Brands => Set<Brand>();
@@ -78,7 +79,7 @@ public class ApplicationDbContext : DbContext
                 if (tenantProperty?.CurrentValue is not Guid tenantId || tenantId == Guid.Empty) continue;
                 var action = entry.State == EntityState.Added ? AuditAction.Create : entry.State == EntityState.Deleted ? AuditAction.Delete : AuditAction.Update;
                 var values = entry.Properties.Where(property => !IsSensitive(property.Metadata.Name) && (entry.State != EntityState.Modified || property.IsModified)).ToDictionary(property => property.Metadata.Name, property => new { Old = entry.State == EntityState.Added ? null : property.OriginalValue, New = entry.State == EntityState.Deleted ? null : property.CurrentValue });
-                AuditLogs.Add(new AuditLog { Id = Guid.NewGuid(), TenantId = tenantId, UserId = _currentUser.UserId, WarehouseId = ResolveWarehouseId(entry), EntityName = entry.Metadata.ClrType.Name, Action = action, ChangesJson = JsonSerializer.Serialize(values), TimestampUtc = DateTime.UtcNow });
+                AuditLogs.Add(new AuditLog { Id = Guid.NewGuid(), TenantId = tenantId, UserId = _currentUser.UserId, WarehouseId = ResolveWarehouseId(entry), SupportImpersonationLogId = _currentUser.SupportImpersonationLogId, EntityName = entry.Metadata.ClrType.Name, Action = action, ChangesJson = JsonSerializer.Serialize(values), TimestampUtc = DateTime.UtcNow });
             }
         }
         finally { _isWritingAudit = false; }

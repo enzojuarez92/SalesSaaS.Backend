@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SalesSaaS.Application.Security;
 using SalesSaaS.Domain;
+using SalesSaaS.Features.Authentication;
 using SalesSaaS.Infrastructure;
 
 namespace SalesSaaS.Controllers;
@@ -12,12 +14,17 @@ public sealed record AdminPagedResult<T>(IReadOnlyList<T> Items, int PageNumber,
 public sealed record ExtendTrialRequest(int Days = 7);
 public sealed record ChangeTenantPlanRequest(Guid SubscriptionPlanId);
 public sealed record SetTenantAccessRequest(bool IsActive);
+public sealed record StartImpersonationRequest(string Reason);
 public sealed record UpdateSubscriptionPlanRequest(decimal MonthlyPrice, decimal AnnualPrice, int MaxUsers, int MaxWarehouses, int MaxInvoicesPerMonth, bool SupportsAfip, bool IsActive);
 
 [ApiController]
 [Route("api/admin")]
 [Authorize(Roles = Roles.SuperAdmin)]
-public sealed class AdminController(ApplicationDbContext context) : ControllerBase
+public sealed class AdminController(
+    ApplicationDbContext context,
+    ICurrentUser currentUser,
+    IJwtTokenService jwtTokenService,
+    IRefreshTokenService refreshTokenService) : ControllerBase
 {
     [HttpGet("dashboard")]
     public async Task<AdminDashboardDto> Dashboard(CancellationToken cancellationToken)
@@ -113,6 +120,39 @@ public sealed class AdminController(ApplicationDbContext context) : ControllerBa
         await context.SaveChangesAsync(cancellationToken);
         var subscription = await LatestSubscription(tenantId, cancellationToken);
         return Ok(ToDto(tenant, subscription));
+    }
+
+    [HttpPost("tenants/{tenantId:guid}/impersonate")]
+    public async Task<ActionResult<AuthResponse>> Impersonate(Guid tenantId, [FromBody] StartImpersonationRequest request, CancellationToken cancellationToken)
+    {
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length < 10 || reason.Length > 500)
+            return BadRequest(new { message = "Indicá un motivo de soporte de entre 10 y 500 caracteres." });
+
+        var tenant = await FindTenant(tenantId, cancellationToken);
+        if (!tenant.IsActive) return BadRequest(new { message = "No se puede iniciar soporte en una empresa suspendida." });
+
+        var membership = await context.TenantMemberships.IgnoreQueryFilters().Include(item => item.User)
+            .Where(item => item.TenantId == tenantId && item.IsActive && item.Role == Roles.Owner && item.User!.IsActive)
+            .OrderBy(item => item.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        if (membership?.User is null) return BadRequest(new { message = "La empresa no tiene un usuario titular activo para iniciar el soporte." });
+        if (!currentUser.UserId.HasValue) return Unauthorized();
+
+        var supportLog = new SupportImpersonationLog
+        {
+            Id = Guid.NewGuid(),
+            SuperAdminUserId = currentUser.UserId.Value,
+            ImpersonatedUserId = membership.UserId,
+            TenantId = tenantId,
+            Reason = reason
+        };
+        var refreshToken = refreshTokenService.Create(membership.UserId, tenantId, currentUser.UserId, supportLog.Id);
+        context.SupportImpersonationLogs.Add(supportLog);
+        context.RefreshTokens.Add(refreshToken.Entity);
+        await context.SaveChangesAsync(cancellationToken);
+
+        var accessToken = jwtTokenService.Create(membership.User, membership, currentUser.UserId, supportLog.Id);
+        return Ok(AuthResponse.From(accessToken, refreshToken, membership.User, membership, currentUser.UserId, supportLog.Id));
     }
 
     private async Task<Tenant> FindTenant(Guid tenantId, CancellationToken cancellationToken) =>

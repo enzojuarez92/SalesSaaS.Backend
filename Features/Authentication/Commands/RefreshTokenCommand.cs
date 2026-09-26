@@ -46,12 +46,23 @@ public sealed class RefreshTokenCommandHandler(
             throw new UnauthorizedAccessException("El usuario o su acceso al negocio ya no están activos.");
         }
 
-        var replacement = refreshTokenService.Create(user.Id, membership.TenantId);
+        if (storedToken.SupportImpersonationLogId.HasValue)
+        {
+            var stillOpen = storedToken.ImpersonatorUserId.HasValue && await context.SupportImpersonationLogs
+                .AnyAsync(log => log.Id == storedToken.SupportImpersonationLogId
+                    && log.SuperAdminUserId == storedToken.ImpersonatorUserId
+                    && log.ImpersonatedUserId == user.Id
+                    && log.TenantId == membership.TenantId
+                    && log.EndedAtUtc == null, cancellationToken);
+            if (!stillOpen) throw new UnauthorizedAccessException("La sesión de soporte finalizó.");
+        }
+
+        var replacement = refreshTokenService.Create(user.Id, membership.TenantId, storedToken.ImpersonatorUserId, storedToken.SupportImpersonationLogId);
         storedToken.RevokedAtUtc = DateTime.UtcNow;
         storedToken.ReplacedByTokenId = replacement.Entity.Id;
         context.RefreshTokens.Add(replacement.Entity);
         await context.SaveChangesAsync(cancellationToken);
 
-        return AuthResponse.From(jwtTokenService.Create(user, membership), replacement, user, membership);
+        return AuthResponse.From(jwtTokenService.Create(user, membership, storedToken.ImpersonatorUserId, storedToken.SupportImpersonationLogId), replacement, user, membership, storedToken.ImpersonatorUserId, storedToken.SupportImpersonationLogId);
     }
 }

@@ -10,6 +10,7 @@ public sealed class RefreshTokenConfiguration : IEntityTypeConfiguration<Refresh
     {
         builder.HasIndex(token => token.TokenHash).IsUnique();
         builder.Property(token => token.TokenHash).IsRequired().HasMaxLength(64);
+        builder.HasIndex(token => token.SupportImpersonationLogId);
 
         builder.HasOne(token => token.User)
             .WithMany()
